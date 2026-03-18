@@ -17,8 +17,14 @@ This gives us:
   - parse Codex sessions for the current project and append normalized turns to memory log
 - `codex-mneme session-start`
   - print concise context (remembered notes + rolling summary for older history + grouped recent turns)
-- `codex-mneme remember "..."`
-  - store persistent project note
+- `codex-mneme remember [--type note|decision|constraint|todo] "..."`
+  - store persistent typed project memory entry
+- `codex-mneme remember list`
+  - list remembered entries with id prefixes
+- `codex-mneme remember edit <id> [--type note|decision|constraint|todo] [content]`
+  - edit remembered content and/or type
+- `codex-mneme remember forget <id>`
+  - remove a remembered entry
 - `codex-mneme status`
   - show memory file counts and paths
 
@@ -33,7 +39,8 @@ npm link
 
 ```bash
 codex-mneme ingest
-codex-mneme remember "Known limitation: only Claude is supported today"
+codex-mneme remember --type decision "Log JSONL is the canonical source"
+codex-mneme remember list
 codex-mneme session-start
 ```
 

@@ -2,7 +2,13 @@
 
 import { basename } from 'node:path';
 import { ingestSessions } from './lib/ingest.mjs';
-import { remember } from './lib/remember.mjs';
+import {
+  REMEMBER_TYPES,
+  remember,
+  listRemembered,
+  editRemembered,
+  forgetRemembered
+} from './lib/remember.mjs';
 import { projectPaths } from './lib/paths.mjs';
 import { readJson, readJsonl } from './lib/fs-utils.mjs';
 import { buildRecentTurns } from './lib/turns.mjs';
@@ -12,7 +18,10 @@ function usage() {
   console.log(`Usage:
   ${basename(process.argv[1])} ingest
   ${basename(process.argv[1])} session-start [--limit N]
-  ${basename(process.argv[1])} remember <content>
+  ${basename(process.argv[1])} remember [--type ${REMEMBER_TYPES.join('|')}] <content>
+  ${basename(process.argv[1])} remember list
+  ${basename(process.argv[1])} remember edit <id> [--type ${REMEMBER_TYPES.join('|')}] [content]
+  ${basename(process.argv[1])} remember forget <id>
   ${basename(process.argv[1])} status`);
 }
 
@@ -35,6 +44,29 @@ function formatTimestamp(value) {
   return String(value || '').replace('T', ' ').replace('Z', '');
 }
 
+function parseTypeOption(args, { defaultType = 'note' } = {}) {
+  const rest = [];
+  let type = defaultType;
+  let hasType = false;
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--type') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) {
+        throw new Error(`--type requires a value (${REMEMBER_TYPES.join(', ')})`);
+      }
+      type = value;
+      hasType = true;
+      i += 1;
+      continue;
+    }
+    rest.push(arg);
+  }
+
+  return { rest, type, hasType };
+}
+
 async function main() {
   const [cmd, ...args] = process.argv.slice(2);
 
@@ -50,12 +82,61 @@ async function main() {
   }
 
   if (cmd === 'remember') {
-    const content = args.join(' ').trim();
-    if (!content) {
-      throw new Error('remember needs content text');
+    const sub = args[0];
+
+    if (sub === 'list') {
+      const result = listRemembered();
+      if (result.entries.length === 0) {
+        console.log('No remembered entries yet.');
+        return;
+      }
+
+      console.log('Remembered entries:');
+      for (const entry of result.entries) {
+        const id = entry.id.slice(0, 8);
+        const ts = formatTimestamp(entry.updatedAt || entry.timestamp);
+        const content = summarizeText(entry.content, 180);
+        const updatedLabel = entry.updatedAt ? 'updated' : 'created';
+        console.log(`- ${id} [${entry.type}] ${content} (${updatedLabel} ${ts})`);
+      }
+      console.log('Use id prefix with `remember edit` or `remember forget`.');
+      return;
     }
-    const result = remember({ type: 'note', content });
-    console.log(`Remembered [${result.entry.type}] ${result.entry.content}`);
+
+    if (sub === 'edit') {
+      const id = String(args[1] || '').trim();
+      if (!id) throw new Error('remember edit requires an id');
+
+      const parsed = parseTypeOption(args.slice(2), { defaultType: 'note' });
+      const content = parsed.rest.join(' ').trim();
+      if (!parsed.hasType && !content) {
+        throw new Error('remember edit requires new content and/or --type');
+      }
+
+      const result = editRemembered({
+        id,
+        ...(parsed.hasType ? { type: parsed.type } : {}),
+        ...(content ? { content } : {})
+      });
+      console.log(`Updated ${result.entry.id.slice(0, 8)} [${result.entry.type}] ${result.entry.content}`);
+      return;
+    }
+
+    if (sub === 'forget') {
+      const id = String(args[1] || '').trim();
+      if (!id) throw new Error('remember forget requires an id');
+      const result = forgetRemembered({ id });
+      console.log(`Forgot ${result.entry.id.slice(0, 8)} [${result.entry.type}] ${result.entry.content}`);
+      return;
+    }
+
+    const addArgs = sub === 'add' ? args.slice(1) : args;
+    const parsed = parseTypeOption(addArgs, { defaultType: 'note' });
+    const content = parsed.rest.join(' ').trim();
+    if (!content) throw new Error('remember needs content text');
+
+    const result = remember({ type: parsed.type, content });
+    console.log(`Remembered ${result.entry.id.slice(0, 8)} [${result.entry.type}] ${result.entry.content}`);
     return;
   }
 
