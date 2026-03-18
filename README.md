@@ -14,7 +14,8 @@ This gives us:
 ## MVP commands
 
 - `codex-mneme ingest`
-  - parse Codex sessions for the current project and append normalized turns to memory log
+  - incrementally parse Codex sessions for the current project and append normalized turns to memory log
+  - work is bounded per run; large backlogs are deferred and drained on subsequent ingests
 - `codex-mneme session-start`
   - print concise context (remembered notes + rolling summary for older history + grouped recent turns)
 - `codex-mneme remember [--type note|decision|constraint|todo] "..."`

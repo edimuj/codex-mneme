@@ -149,6 +149,8 @@ async function main() {
       project: paths.key,
       paths,
       filesTracked: Object.keys(state.files || {}).length,
+      pendingFiles: Array.isArray(state.pendingFiles) ? state.pendingFiles.length : 0,
+      dirsTracked: state.dirs && typeof state.dirs === 'object' ? Object.keys(state.dirs).length : 0,
       logEntries: log.length,
       rememberedCount: Array.isArray(remembered) ? remembered.length : 0
     }, null, 2));
