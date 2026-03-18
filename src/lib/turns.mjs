@@ -17,7 +17,7 @@ function isLowValueUserText(text) {
 function isLowValueAssistantText(text) {
   const normalized = normalize(text).toLowerCase().replace(/[.!?]+$/g, '').trim();
   if (!normalized) return true;
-  return /^(you'?re welcome|no problem|glad to help|happy to help|my pleasure)$/.test(normalized);
+  return /^(you'?re welcome|you are welcome|no problem|glad to help|happy to help|my pleasure)$/.test(normalized);
 }
 
 function sortEntries(entries) {

@@ -16,7 +16,7 @@ This gives us:
 - `codex-mneme ingest`
   - parse Codex sessions for the current project and append normalized turns to memory log
 - `codex-mneme session-start`
-  - print concise context (remembered notes + grouped recent turns, with low-value acknowledgements trimmed)
+  - print concise context (remembered notes + rolling summary for older history + grouped recent turns)
 - `codex-mneme remember "..."`
   - store persistent project note
 - `codex-mneme status`

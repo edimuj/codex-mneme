@@ -6,6 +6,7 @@ import { remember } from './lib/remember.mjs';
 import { projectPaths } from './lib/paths.mjs';
 import { readJson, readJsonl } from './lib/fs-utils.mjs';
 import { buildRecentTurns } from './lib/turns.mjs';
+import { buildRollingSummary } from './lib/summary.mjs';
 
 function usage() {
   console.log(`Usage:
@@ -79,6 +80,7 @@ async function main() {
     const paths = projectPaths(process.cwd());
     const remembered = readJson(paths.remembered, []);
     const log = readJsonl(paths.log);
+    const rollingSummary = buildRollingSummary(log, { recentTurnLimit: limit });
     const recentTurns = buildRecentTurns(log, { limit });
 
     console.log('# Codex-Mneme Context');
@@ -89,6 +91,14 @@ async function main() {
         const type = item?.type || 'note';
         const content = summarizeText(item?.content || '');
         if (content) console.log(`- [${type}] ${content}`);
+      }
+    }
+
+    if (rollingSummary) {
+      console.log('\n## Rolling Summary');
+      console.log(`- Covers ${rollingSummary.summarizedTurns} older turns (latest ${rollingSummary.recentTurns} shown below).`);
+      for (const item of rollingSummary.items) {
+        console.log(`- ${item}`);
       }
     }
 
