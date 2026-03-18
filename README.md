@@ -11,7 +11,22 @@ This gives us:
 - full turn history across sessions
 - a simple "session start context" command
 
-## MVP commands
+## What shipped
+
+- Higher-quality startup context:
+  - chronological turn grouping
+  - low-value acknowledgement trimming
+  - rolling summary for older turns + recent-turn focus
+- Typed project memory semantics:
+  - `note`, `decision`, `constraint`, `todo`
+  - list/edit/forget flows with id-prefix targeting
+  - legacy `remembered.json` entries auto-normalized
+- Incremental bounded ingest:
+  - cached directory metadata to avoid repeated full directory reads
+  - bounded work per ingest run with deferred backlog drain
+  - known-file hot-set + rotating checks for append detection
+
+## CLI commands
 
 - `codex-mneme ingest`
   - incrementally parse Codex sessions for the current project and append normalized turns to memory log
@@ -27,7 +42,7 @@ This gives us:
 - `codex-mneme remember forget <id>`
   - remove a remembered entry
 - `codex-mneme status`
-  - show memory file counts and paths
+  - show memory file counts, ingest backlog stats, and project paths
 
 ## Install locally
 
@@ -42,7 +57,10 @@ npm link
 codex-mneme ingest
 codex-mneme remember --type decision "Log JSONL is the canonical source"
 codex-mneme remember list
+codex-mneme remember edit <id-prefix> --type constraint
+codex-mneme remember forget <id-prefix>
 codex-mneme session-start
+codex-mneme status
 ```
 
 ## Notes about hooks
