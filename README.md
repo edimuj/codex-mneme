@@ -70,8 +70,10 @@ npm install -g codex-mneme
 Run without global install (works across old/new npm versions):
 
 ```bash
-npx --yes -p codex-mneme@latest codex-mneme status
+npx --yes npm:codex-mneme@latest status
 ```
+
+If you are running this command from inside the `codex-mneme` repo itself, prefer the `npm:` prefix form above.
 
 From source (local dev):
 
