@@ -20,6 +20,7 @@ export function projectPaths(cwd) {
     base,
     state: join(base, 'state.json'),
     log: join(base, 'log.jsonl'),
-    remembered: join(base, 'remembered.json')
+    remembered: join(base, 'remembered.json'),
+    hooks: join(base, 'hooks.jsonl')
   };
 }

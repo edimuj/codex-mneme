@@ -9,6 +9,7 @@ import {
   editRemembered,
   forgetRemembered
 } from './lib/remember.mjs';
+import { handleHookEvent, hooksEnabled } from './lib/hooks.mjs';
 import { projectPaths } from './lib/paths.mjs';
 import { readJson, readJsonl } from './lib/fs-utils.mjs';
 import { buildRecentTurns } from './lib/turns.mjs';
@@ -22,6 +23,7 @@ function usage() {
   ${basename(process.argv[1])} remember list
   ${basename(process.argv[1])} remember edit <id> [--type ${REMEMBER_TYPES.join('|')}] [content]
   ${basename(process.argv[1])} remember forget <id>
+  ${basename(process.argv[1])} hook <SessionStart|UserPromptSubmit|Stop> [--text "..."]
   ${basename(process.argv[1])} status`);
 }
 
@@ -65,6 +67,31 @@ function parseTypeOption(args, { defaultType = 'note' } = {}) {
   }
 
   return { rest, type, hasType };
+}
+
+function parseTextOption(args) {
+  const rest = [];
+  let text = '';
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--text') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) {
+        throw new Error('--text requires a value');
+      }
+      text = value;
+      i += 1;
+      continue;
+    }
+    rest.push(arg);
+  }
+
+  if (!text && rest.length > 0) {
+    text = rest.join(' ').trim();
+  }
+
+  return { text: String(text || '').trim() };
 }
 
 async function main() {
@@ -144,16 +171,33 @@ async function main() {
     const paths = projectPaths(process.cwd());
     const state = readJson(paths.state, { files: {} });
     const log = readJsonl(paths.log);
+    const hooksLog = readJsonl(paths.hooks);
     const remembered = readJson(paths.remembered, []);
     console.log(JSON.stringify({
       project: paths.key,
       paths,
+      hooksEnabled: hooksEnabled(),
       filesTracked: Object.keys(state.files || {}).length,
       pendingFiles: Array.isArray(state.pendingFiles) ? state.pendingFiles.length : 0,
       dirsTracked: state.dirs && typeof state.dirs === 'object' ? Object.keys(state.dirs).length : 0,
       logEntries: log.length,
+      hookEvents: hooksLog.length,
       rememberedCount: Array.isArray(remembered) ? remembered.length : 0
     }, null, 2));
+    return;
+  }
+
+  if (cmd === 'hook') {
+    const event = args[0];
+    if (!event) {
+      throw new Error('hook requires an event: SessionStart | UserPromptSubmit | Stop');
+    }
+    const { text } = parseTextOption(args.slice(1));
+    const result = handleHookEvent({
+      event,
+      text
+    });
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 

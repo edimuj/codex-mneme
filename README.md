@@ -41,8 +41,12 @@ This gives us:
   - edit remembered content and/or type
 - `codex-mneme remember forget <id>`
   - remove a remembered entry
+- `codex-mneme hook <SessionStart|UserPromptSubmit|Stop> [--text "..."]`
+  - optional hook entrypoint for Codex hook events (disabled by default)
+  - only active when `CODEX_MNEME_ENABLE_HOOKS=1`
+  - `SessionStart`/`Stop` trigger normal history ingest; `UserPromptSubmit` records hook signal only
 - `codex-mneme status`
-  - show memory file counts, ingest backlog stats, and project paths
+  - show memory file counts, ingest backlog stats, hook status, and project paths
 
 ## Install locally
 
@@ -67,4 +71,13 @@ codex-mneme status
 
 Codex currently exposes an experimental `codex_hooks` feature in source/tests with `SessionStart`, `UserPromptSubmit`, and `Stop` events.
 
-For this repo, the base ingestion path does not depend on hooks. Hook support can be added later as an optional acceleration path.
+For this repo, history ingest remains canonical and hooks are opt-in acceleration only.
+
+Enable hooks:
+
+```bash
+export CODEX_MNEME_ENABLE_HOOKS=1
+codex-mneme hook SessionStart
+codex-mneme hook UserPromptSubmit --text "Investigate ingest performance"
+codex-mneme hook Stop
+```
