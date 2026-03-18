@@ -113,3 +113,53 @@ test('setupCodexCli reports conflict for unmanaged existing notify config', () =
   assert.equal(result.config.reason, 'existing_notify_setting');
   assert.equal(readFileSync(configPath, 'utf8'), 'notify = ["bash", "-lc", "echo custom"]\n');
 });
+
+test('setupCodexCli global mode writes skill and AGENTS in codex home', () => {
+  const cwd = tempProjectDir('global');
+  const codexRoot = join(cwd, 'fake-codex-home');
+
+  const result = setupCodexCli({
+    cwd,
+    global: true,
+    withAgents: true,
+    codexHomePath: codexRoot
+  });
+
+  assert.equal(result.scope, 'global');
+  assert.equal(result.root, codexRoot);
+  assert.equal(result.skill.path, join(codexRoot, 'skills', 'codex-mneme', 'SKILL.md'));
+  assert.equal(result.skill.status, 'created');
+  assert.equal(result.agents.path, join(codexRoot, 'AGENTS.md'));
+  assert.equal(result.agents.status, 'created');
+  assert.equal(existsSync(join(cwd, 'AGENTS.md')), false);
+
+  const agentsText = readFileSync(result.agents.path, 'utf8');
+  assert.ok(agentsText.includes('At session start in every project'));
+
+  const second = setupCodexCli({
+    cwd,
+    global: true,
+    withAgents: true,
+    codexHomePath: codexRoot
+  });
+  assert.equal(second.skill.status, 'exists');
+  assert.equal(second.agents.status, 'unchanged');
+});
+
+test('setupCodexCli global mode applies notify to codex home config by default', () => {
+  const cwd = tempProjectDir('global-notify');
+  const codexRoot = join(cwd, 'fake-codex-home');
+
+  const result = setupCodexCli({
+    cwd,
+    global: true,
+    applyNotify: true,
+    codexHomePath: codexRoot
+  });
+
+  assert.equal(result.config.path, join(codexRoot, 'config.toml'));
+  assert.equal(result.config.status, 'created');
+  const configText = readFileSync(result.config.path, 'utf8');
+  assert.ok(configText.includes('# codex-mneme:begin'));
+  assert.ok(configText.includes('notify = ["bash", "-lc", "codex-mneme ingest >/dev/null 2>&1 || true"]'));
+});

@@ -4,6 +4,7 @@ import { ensureDir } from './fs-utils.mjs';
 import { codexHome } from './paths.mjs';
 
 const SKILL_REL_PATH = '.agents/skills/codex-mneme/SKILL.md';
+const GLOBAL_SKILL_REL_PATH = 'skills/codex-mneme/SKILL.md';
 const AGENTS_REL_PATH = 'AGENTS.md';
 const AGENTS_BLOCK_START = '<!-- codex-mneme:begin -->';
 const AGENTS_BLOCK_END = '<!-- codex-mneme:end -->';
@@ -39,9 +40,13 @@ Use this workflow whenever project continuity matters.
 `;
 }
 
-export function codexAgentsBlockTemplate({ command = 'codex-mneme' } = {}) {
+export function codexAgentsBlockTemplate({
+  command = 'codex-mneme',
+  scope = 'project'
+} = {}) {
+  const scopeText = scope === 'global' ? 'in every project' : 'in this project';
   return `## Codex-Mneme Workflow
-- At session start in this project, run \`${command} session-start --limit 8\` and use the output as working context.
+- At session start ${scopeText}, run \`${command} session-start --limit 8\` and use the output as working context.
 - Record durable outcomes with \`${command} remember --type decision|constraint|todo "<text>"\`.
 - Run \`${command} ingest\` before final handoff for substantial tasks.`;
 }
@@ -106,10 +111,15 @@ export function setupCodexCli({
   withAgents = false,
   applyNotify = false,
   notifyConfigPath = '',
+  global = false,
+  codexHomePath = '',
   command = 'codex-mneme'
 } = {}) {
-  const root = resolve(cwd);
-  const skillPath = resolve(root, SKILL_REL_PATH);
+  const projectRoot = resolve(cwd);
+  const codexRoot = codexHomePath ? resolve(projectRoot, codexHomePath) : resolve(codexHome());
+  const scope = global ? 'global' : 'project';
+  const root = global ? codexRoot : projectRoot;
+  const skillPath = resolve(root, global ? GLOBAL_SKILL_REL_PATH : SKILL_REL_PATH);
   const skillContent = codexSkillTemplate({ command });
 
   let skill;
@@ -126,14 +136,14 @@ export function setupCodexCli({
     const next = upsertManagedBlock(existing, {
       startMarker: AGENTS_BLOCK_START,
       endMarker: AGENTS_BLOCK_END,
-      block: codexAgentsBlockTemplate({ command })
+      block: codexAgentsBlockTemplate({ command, scope })
     });
     agents = writeIfChanged(agentsPath, next);
   }
 
   const configPath = notifyConfigPath
     ? resolve(root, notifyConfigPath)
-    : resolve(codexHome(), CONFIG_REL_PATH);
+    : resolve(codexRoot, CONFIG_REL_PATH);
   let config = { status: 'skipped', path: configPath };
   if (applyNotify) {
     const existing = existsSync(configPath) ? readFileSync(configPath, 'utf8') : '';
@@ -164,7 +174,10 @@ export function setupCodexCli({
   }
 
   return {
-    cwd: root,
+    scope,
+    root,
+    cwd: projectRoot,
+    codexHome: codexRoot,
     skill,
     agents,
     config,

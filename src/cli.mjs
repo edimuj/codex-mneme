@@ -25,7 +25,7 @@ function usage() {
   ${basename(process.argv[1])} remember edit <id> [--type ${REMEMBER_TYPES.join('|')}] [content]
   ${basename(process.argv[1])} remember forget <id>
   ${basename(process.argv[1])} hook <SessionStart|UserPromptSubmit|Stop> [--text "..."]
-  ${basename(process.argv[1])} codex-init [--with-agents] [--apply-notify] [--notify-config path] [--force] [--command name]
+  ${basename(process.argv[1])} codex-init [--global] [--with-agents] [--apply-notify] [--notify-config path] [--force] [--command name]
   ${basename(process.argv[1])} status`);
 }
 
@@ -98,6 +98,7 @@ function parseTextOption(args) {
 
 function parseCodexInitOptions(args) {
   const out = {
+    global: false,
     withAgents: false,
     applyNotify: false,
     notifyConfigPath: '',
@@ -107,6 +108,10 @@ function parseCodexInitOptions(args) {
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
+    if (arg === '--global') {
+      out.global = true;
+      continue;
+    }
     if (arg === '--with-agents') {
       out.withAgents = true;
       continue;

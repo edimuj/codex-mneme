@@ -18,8 +18,10 @@ This gives us:
   - low-value acknowledgement trimming
   - rolling summary for older turns + recent-turn focus
 - Codex CLI onboarding:
-  - `codex-init` scaffolds a project skill so Codex can discover mneme workflow directly
-  - optional managed `AGENTS.md` block for explicit "when to run mneme" guidance
+  - `codex-init` supports project scope and global scope
+  - project scope scaffolds a project skill so Codex can discover mneme workflow directly
+  - global scope scaffolds a global skill under `~/.codex/skills`
+  - optional managed `AGENTS.md` block for explicit "when to run mneme" guidance (project or global)
   - optional managed Codex config `notify` block for per-turn auto-ingest
 - Typed project memory semantics:
   - `note`, `decision`, `constraint`, `todo`
@@ -49,12 +51,13 @@ This gives us:
   - optional hook entrypoint for Codex hook events (disabled by default)
   - only active when `CODEX_MNEME_ENABLE_HOOKS=1`
   - `SessionStart`/`Stop` trigger normal history ingest; `UserPromptSubmit` records hook signal only
-- `codex-mneme codex-init [--with-agents] [--apply-notify] [--notify-config path] [--force] [--command name]`
-  - scaffold Codex integration files in the current project
-  - creates `.agents/skills/codex-mneme/SKILL.md` (unless it exists; use `--force` to overwrite)
-  - with `--with-agents`, inserts/updates a managed Codex-Mneme workflow block in `AGENTS.md`
+- `codex-mneme codex-init [--global] [--with-agents] [--apply-notify] [--notify-config path] [--force] [--command name]`
+  - scaffold Codex integration files
+  - default (project mode): writes `.agents/skills/codex-mneme/SKILL.md`
+  - `--global`: writes `~/.codex/skills/codex-mneme/SKILL.md`
+  - with `--with-agents`: inserts/updates managed Codex-Mneme block in `AGENTS.md` (project mode) or `~/.codex/AGENTS.md` (global mode)
   - with `--apply-notify`, inserts/updates a managed notify block in Codex config (`~/.codex/config.toml` by default)
-  - use `--notify-config` to target a custom config file path (relative to project or absolute)
+  - use `--notify-config` to target a custom config file path (relative to active root or absolute)
   - prints the same managed notify block as a snippet for manual copy/paste
 - `codex-mneme status`
   - show memory file counts, ingest backlog stats, hook status, and project paths
@@ -96,6 +99,17 @@ This makes Codex usage explicit and discoverable:
 - writes/updates a managed notify block in `~/.codex/config.toml` for per-turn auto-ingest
 - if your config already has an unmanaged `notify = ...`, setup reports a conflict and leaves the file unchanged
 
+For global setup across all projects:
+
+```bash
+codex-mneme codex-init --global --with-agents --apply-notify
+```
+
+This writes:
+- `~/.codex/skills/codex-mneme/SKILL.md`
+- `~/.codex/AGENTS.md` (managed block)
+- `~/.codex/config.toml` (managed notify block)
+
 ## Usage
 
 ```bash
@@ -105,6 +119,7 @@ codex-mneme remember list
 codex-mneme remember edit <id-prefix> --type constraint
 codex-mneme remember forget <id-prefix>
 codex-mneme codex-init --with-agents --apply-notify
+codex-mneme codex-init --global --with-agents --apply-notify
 codex-mneme session-start
 codex-mneme status
 ```
