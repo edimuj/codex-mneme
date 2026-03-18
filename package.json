@@ -1,0 +1,13 @@
+{
+  "name": "codex-mneme",
+  "version": "0.1.0",
+  "description": "Project memory for Codex CLI sessions",
+  "type": "module",
+  "bin": {
+    "codex-mneme": "./src/cli.mjs"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
