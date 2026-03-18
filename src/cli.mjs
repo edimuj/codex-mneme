@@ -14,6 +14,7 @@ import { projectPaths } from './lib/paths.mjs';
 import { readJson, readJsonl } from './lib/fs-utils.mjs';
 import { buildRecentTurns } from './lib/turns.mjs';
 import { buildRollingSummary } from './lib/summary.mjs';
+import { setupCodexCli } from './lib/codex-setup.mjs';
 
 function usage() {
   console.log(`Usage:
@@ -24,6 +25,7 @@ function usage() {
   ${basename(process.argv[1])} remember edit <id> [--type ${REMEMBER_TYPES.join('|')}] [content]
   ${basename(process.argv[1])} remember forget <id>
   ${basename(process.argv[1])} hook <SessionStart|UserPromptSubmit|Stop> [--text "..."]
+  ${basename(process.argv[1])} codex-init [--with-agents] [--apply-notify] [--notify-config path] [--force] [--command name]
   ${basename(process.argv[1])} status`);
 }
 
@@ -92,6 +94,53 @@ function parseTextOption(args) {
   }
 
   return { text: String(text || '').trim() };
+}
+
+function parseCodexInitOptions(args) {
+  const out = {
+    withAgents: false,
+    applyNotify: false,
+    notifyConfigPath: '',
+    force: false,
+    command: 'codex-mneme'
+  };
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--with-agents') {
+      out.withAgents = true;
+      continue;
+    }
+    if (arg === '--apply-notify') {
+      out.applyNotify = true;
+      continue;
+    }
+    if (arg === '--notify-config') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) {
+        throw new Error('--notify-config requires a value');
+      }
+      out.notifyConfigPath = value;
+      i += 1;
+      continue;
+    }
+    if (arg === '--force') {
+      out.force = true;
+      continue;
+    }
+    if (arg === '--command') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) {
+        throw new Error('--command requires a value');
+      }
+      out.command = value;
+      i += 1;
+      continue;
+    }
+    throw new Error(`unknown option for codex-init: ${arg}`);
+  }
+
+  return out;
 }
 
 async function main() {
@@ -184,6 +233,16 @@ async function main() {
       hookEvents: hooksLog.length,
       rememberedCount: Array.isArray(remembered) ? remembered.length : 0
     }, null, 2));
+    return;
+  }
+
+  if (cmd === 'codex-init') {
+    const options = parseCodexInitOptions(args);
+    const result = setupCodexCli({
+      cwd: process.cwd(),
+      ...options
+    });
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 

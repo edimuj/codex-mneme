@@ -17,6 +17,10 @@ This gives us:
   - chronological turn grouping
   - low-value acknowledgement trimming
   - rolling summary for older turns + recent-turn focus
+- Codex CLI onboarding:
+  - `codex-init` scaffolds a project skill so Codex can discover mneme workflow directly
+  - optional managed `AGENTS.md` block for explicit "when to run mneme" guidance
+  - optional managed Codex config `notify` block for per-turn auto-ingest
 - Typed project memory semantics:
   - `note`, `decision`, `constraint`, `todo`
   - list/edit/forget flows with id-prefix targeting
@@ -45,15 +49,44 @@ This gives us:
   - optional hook entrypoint for Codex hook events (disabled by default)
   - only active when `CODEX_MNEME_ENABLE_HOOKS=1`
   - `SessionStart`/`Stop` trigger normal history ingest; `UserPromptSubmit` records hook signal only
+- `codex-mneme codex-init [--with-agents] [--apply-notify] [--notify-config path] [--force] [--command name]`
+  - scaffold Codex integration files in the current project
+  - creates `.agents/skills/codex-mneme/SKILL.md` (unless it exists; use `--force` to overwrite)
+  - with `--with-agents`, inserts/updates a managed Codex-Mneme workflow block in `AGENTS.md`
+  - with `--apply-notify`, inserts/updates a managed notify block in Codex config (`~/.codex/config.toml` by default)
+  - use `--notify-config` to target a custom config file path (relative to project or absolute)
+  - prints the same managed notify block as a snippet for manual copy/paste
 - `codex-mneme status`
   - show memory file counts, ingest backlog stats, hook status, and project paths
 
-## Install locally
+## Install
+
+From source (local dev or first-time setup):
 
 ```bash
+git clone https://github.com/edimuj/codex-mneme.git
 cd ~/projects/oss/codex-mneme
+npm install
 npm link
 ```
+
+Direct one-off run without global link:
+
+```bash
+npx --yes github:edimuj/codex-mneme status
+```
+
+## Codex CLI integration (recommended)
+
+```bash
+codex-mneme codex-init --with-agents --apply-notify
+```
+
+This makes Codex usage explicit and discoverable:
+- creates `.agents/skills/codex-mneme/SKILL.md` so Codex can use a project skill for mneme workflow
+- writes/updates a managed `AGENTS.md` block so agents are told exactly when to run mneme
+- writes/updates a managed notify block in `~/.codex/config.toml` for per-turn auto-ingest
+- if your config already has an unmanaged `notify = ...`, setup reports a conflict and leaves the file unchanged
 
 ## Usage
 
@@ -63,6 +96,7 @@ codex-mneme remember --type decision "Log JSONL is the canonical source"
 codex-mneme remember list
 codex-mneme remember edit <id-prefix> --type constraint
 codex-mneme remember forget <id-prefix>
+codex-mneme codex-init --with-agents --apply-notify
 codex-mneme session-start
 codex-mneme status
 ```
