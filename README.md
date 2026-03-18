@@ -61,19 +61,25 @@ This gives us:
 
 ## Install
 
-From source (local dev or first-time setup):
+From npm (recommended):
+
+```bash
+npm install -g codex-mneme
+```
+
+Run without global install (works across old/new npm versions):
+
+```bash
+npx --yes -p codex-mneme@latest codex-mneme status
+```
+
+From source (local dev):
 
 ```bash
 git clone https://github.com/edimuj/codex-mneme.git
 cd ~/projects/oss/codex-mneme
 npm install
 npm link
-```
-
-Direct one-off run without global link:
-
-```bash
-npx --yes github:edimuj/codex-mneme status
 ```
 
 ## Codex CLI integration (recommended)
