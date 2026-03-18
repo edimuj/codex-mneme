@@ -5,6 +5,7 @@ import { ingestSessions } from './lib/ingest.mjs';
 import { remember } from './lib/remember.mjs';
 import { projectPaths } from './lib/paths.mjs';
 import { readJson, readJsonl } from './lib/fs-utils.mjs';
+import { buildRecentTurns } from './lib/turns.mjs';
 
 function usage() {
   console.log(`Usage:
@@ -27,6 +28,10 @@ function summarizeText(text, max = 240) {
   const oneLine = String(text).replace(/\s+/g, ' ').trim();
   if (oneLine.length <= max) return oneLine;
   return `${oneLine.slice(0, max - 1)}…`;
+}
+
+function formatTimestamp(value) {
+  return String(value || '').replace('T', ' ').replace('Z', '');
 }
 
 async function main() {
@@ -74,7 +79,7 @@ async function main() {
     const paths = projectPaths(process.cwd());
     const remembered = readJson(paths.remembered, []);
     const log = readJsonl(paths.log);
-    const recent = log.slice(-limit);
+    const recentTurns = buildRecentTurns(log, { limit });
 
     console.log('# Codex-Mneme Context');
 
@@ -87,17 +92,21 @@ async function main() {
       }
     }
 
-    if (recent.length > 0) {
+    if (recentTurns.length > 0) {
       console.log('\n## Recent Turns');
-      for (const entry of recent) {
-        const ts = (entry.timestamp || '').replace('T', ' ').replace('Z', '');
-        const text = summarizeText(entry.text || '');
-        if (!text) continue;
-        console.log(`- ${ts} ${entry.role}: ${text}`);
+      for (const turn of recentTurns) {
+        const ts = formatTimestamp(turn.timestamp);
+        if (turn.user) {
+          console.log(`- ${ts} user: ${summarizeText(turn.user, 180)}`);
+        }
+        if (turn.assistant.length > 0) {
+          const assistantText = summarizeText(turn.assistant.join('\n'));
+          console.log(`  ${ts} assistant: ${assistantText}`);
+        }
       }
     }
 
-    if (recent.length === 0 && (!Array.isArray(remembered) || remembered.length === 0)) {
+    if (recentTurns.length === 0 && (!Array.isArray(remembered) || remembered.length === 0)) {
       console.log('\nNo project memory yet. Run `codex-mneme ingest` after some sessions.');
     }
     return;
