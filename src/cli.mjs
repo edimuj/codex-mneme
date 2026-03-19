@@ -14,13 +14,14 @@ import { projectPaths } from './lib/paths.mjs';
 import { readJson, readJsonl } from './lib/fs-utils.mjs';
 import { buildRecentTurns } from './lib/turns.mjs';
 import { buildRollingSummary } from './lib/summary.mjs';
+import { buildAiRollingSummary } from './lib/ai-summary.mjs';
 import { buildSessionStartOutput, clipOutput } from './lib/session-start-render.mjs';
 import { setupCodexCli } from './lib/codex-setup.mjs';
 
 function usage() {
   console.log(`Usage:
   ${basename(process.argv[1])} ingest
-  ${basename(process.argv[1])} session-start [--limit N] [--max-summary-items N] [--max-recent-chars N] [--max-output-chars N]
+  ${basename(process.argv[1])} session-start [--limit N] [--max-summary-items N] [--max-recent-chars N] [--max-output-chars N] [--summary-mode deterministic|ai|off] [--summary-model MODEL] [--summary-input-chars N] [--summary-timeout-ms N] [--summary-item-chars N]
   ${basename(process.argv[1])} remember [--type ${REMEMBER_TYPES.join('|')}] <content>
   ${basename(process.argv[1])} remember list
   ${basename(process.argv[1])} remember edit <id> [--type ${REMEMBER_TYPES.join('|')}] [content]
@@ -44,12 +45,25 @@ function readNumberOption(args, index, name, {
   return Math.min(n, max);
 }
 
+function readStringOption(args, index, name) {
+  const raw = args[index + 1];
+  if (!raw || raw.startsWith('--')) {
+    throw new Error(`${name} requires a value`);
+  }
+  return raw;
+}
+
 function parseSessionStartOptions(args) {
   const out = {
     limit: 12,
     maxSummaryItems: 6,
     maxRecentChars: 0,
-    maxOutputChars: 0
+    maxOutputChars: 0,
+    summaryMode: 'deterministic',
+    summaryModel: 'gpt-5.4-mini',
+    summaryInputChars: 12000,
+    summaryTimeoutMs: 45000,
+    summaryItemChars: 220
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -86,6 +100,47 @@ function parseSessionStartOptions(args) {
         fallback: 0,
         min: 0,
         max: 200000
+      });
+      i += 1;
+      continue;
+    }
+    if (arg === '--summary-mode') {
+      const mode = readStringOption(args, i, '--summary-mode').toLowerCase();
+      if (!['deterministic', 'ai', 'off'].includes(mode)) {
+        throw new Error('--summary-mode must be one of: deterministic, ai, off');
+      }
+      out.summaryMode = mode;
+      i += 1;
+      continue;
+    }
+    if (arg === '--summary-model') {
+      out.summaryModel = readStringOption(args, i, '--summary-model');
+      i += 1;
+      continue;
+    }
+    if (arg === '--summary-input-chars') {
+      out.summaryInputChars = readNumberOption(args, i, '--summary-input-chars', {
+        fallback: 12000,
+        min: 0,
+        max: 200000
+      });
+      i += 1;
+      continue;
+    }
+    if (arg === '--summary-timeout-ms') {
+      out.summaryTimeoutMs = readNumberOption(args, i, '--summary-timeout-ms', {
+        fallback: 45000,
+        min: 1000,
+        max: 300000
+      });
+      i += 1;
+      continue;
+    }
+    if (arg === '--summary-item-chars') {
+      out.summaryItemChars = readNumberOption(args, i, '--summary-item-chars', {
+        fallback: 220,
+        min: 40,
+        max: 2000
       });
       i += 1;
     }
@@ -327,17 +382,42 @@ async function main() {
     const paths = projectPaths(process.cwd());
     const remembered = readJson(paths.remembered, []);
     const log = readJsonl(paths.log);
-    const rollingSummary = buildRollingSummary(log, {
-      recentTurnLimit: options.limit,
-      maxItems: options.maxSummaryItems
-    });
+    let rollingSummary = null;
+    let summaryNotice = '';
+
+    if (options.summaryMode !== 'off') {
+      if (options.summaryMode === 'ai') {
+        try {
+          rollingSummary = buildAiRollingSummary(log, {
+            recentTurnLimit: options.limit,
+            maxItems: options.maxSummaryItems,
+            model: options.summaryModel,
+            maxInputChars: options.summaryInputChars,
+            timeoutMs: options.summaryTimeoutMs,
+            itemMaxChars: options.summaryItemChars
+          });
+        } catch (error) {
+          const reason = summarizeText(error?.message || 'unknown error', 140);
+          summaryNotice = `AI summary unavailable (${reason}); using deterministic summary.`;
+        }
+      }
+
+      if (!rollingSummary) {
+        rollingSummary = buildRollingSummary(log, {
+          recentTurnLimit: options.limit,
+          maxItems: options.maxSummaryItems
+        });
+      }
+    }
+
     const recentTurns = buildRecentTurns(log, { limit: options.limit });
 
     const output = buildSessionStartOutput({
       remembered,
       rollingSummary,
       recentTurns,
-      maxRecentChars: options.maxRecentChars
+      maxRecentChars: options.maxRecentChars,
+      summaryNotice
     });
     console.log(clipOutput(output, options.maxOutputChars));
     return;

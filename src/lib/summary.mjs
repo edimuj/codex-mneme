@@ -54,6 +54,7 @@ export function buildRollingSummary(entries, {
   if (items.length === 0) return null;
 
   return {
+    source: 'deterministic',
     totalTurns: turns.length,
     summarizedTurns: olderTurns.length,
     recentTurns: recentTurnLimit,

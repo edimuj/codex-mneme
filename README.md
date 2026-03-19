@@ -37,12 +37,17 @@ This gives us:
 - `codex-mneme ingest`
   - incrementally parse Codex sessions for the current project and append normalized turns to memory log
   - work is bounded per run; large backlogs are deferred and drained on subsequent ingests
-- `codex-mneme session-start [--limit N] [--max-summary-items N] [--max-recent-chars N] [--max-output-chars N]`
+- `codex-mneme session-start [--limit N] [--max-summary-items N] [--max-recent-chars N] [--max-output-chars N] [--summary-mode deterministic|ai|off] [--summary-model MODEL] [--summary-input-chars N] [--summary-timeout-ms N] [--summary-item-chars N]`
   - print concise context (remembered notes + rolling summary for older history + grouped recent turns)
   - `--limit`: number of recent turns shown (default `12`)
   - `--max-summary-items`: cap rolling summary bullets (default `6`, set `0` to disable rolling summary bullets)
   - `--max-recent-chars`: cap user/assistant text length per recent-turn line
   - `--max-output-chars`: hard cap final output size (deterministic clipping)
+  - `--summary-mode`: summary engine (default `deterministic`, use `ai` to call local `codex exec`, `off` to disable rolling summary)
+  - `--summary-model`: model passed to `codex exec --model` when `--summary-mode ai` (default `gpt-5.4-mini`)
+  - `--summary-input-chars`: cap prompt size sent to AI summarizer
+  - `--summary-timeout-ms`: timeout for AI summarizer command
+  - `--summary-item-chars`: cap length per AI summary item
 - `codex-mneme remember [--type note|decision|constraint|todo] "..."`
   - store persistent typed project memory entry
 - `codex-mneme remember list`
@@ -125,8 +130,23 @@ codex-mneme remember forget <id-prefix>
 codex-mneme codex-init --with-agents --apply-notify
 codex-mneme codex-init --global --with-agents --apply-notify
 codex-mneme session-start --limit 8 --max-summary-items 4 --max-output-chars 3500
+codex-mneme session-start --summary-mode ai --summary-model gpt-5.4-mini --max-summary-items 5
 codex-mneme status
 ```
+
+## AI Summarization With Codex Subscription
+
+`codex-mneme` can use your local Codex CLI authentication for rolling summaries:
+
+```bash
+codex login
+codex-mneme session-start --summary-mode ai --summary-model gpt-5.4-mini
+```
+
+Notes:
+- AI mode calls `codex exec` non-interactively.
+- If auth/quota/network fails, mneme falls back to deterministic summary automatically.
+- Keep AI summary bounded with `--max-summary-items`, `--summary-item-chars`, and `--summary-input-chars`.
 
 ## Notes about hooks
 

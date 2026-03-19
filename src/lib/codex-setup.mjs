@@ -28,7 +28,8 @@ Use this workflow whenever project continuity matters.
 
 ## Startup
 1. Run \`${command} session-start --limit 8\`.
-2. Use the output as context before coding.
+2. If Codex auth is available and you want AI summary quality, run \`${command} session-start --limit 8 --summary-mode ai --summary-model gpt-5.4-mini\`.
+3. Use the output as context before coding.
 
 ## During work
 1. Record durable items with \`${command} remember --type decision|constraint|todo "<text>"\`.
@@ -47,6 +48,7 @@ export function codexAgentsBlockTemplate({
   const scopeText = scope === 'global' ? 'in every project' : 'in this project';
   return `## Codex-Mneme Workflow
 - At session start ${scopeText}, run \`${command} session-start --limit 8\` and use the output as working context.
+- Optional: use \`${command} session-start --limit 8 --summary-mode ai --summary-model gpt-5.4-mini\` when Codex auth/quota is available.
 - Record durable outcomes with \`${command} remember --type decision|constraint|todo "<text>"\`.
 - Run \`${command} ingest\` before final handoff for substantial tasks.`;
 }

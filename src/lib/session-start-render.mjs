@@ -17,7 +17,8 @@ export function buildSessionStartOutput({
   remembered = [],
   rollingSummary = null,
   recentTurns = [],
-  maxRecentChars = 0
+  maxRecentChars = 0,
+  summaryNotice = ''
 } = {}) {
   const lines = ['# Codex-Mneme Context'];
   const recentMax = Number.isFinite(maxRecentChars) && maxRecentChars > 0 ? maxRecentChars : 0;
@@ -33,11 +34,22 @@ export function buildSessionStartOutput({
     }
   }
 
-  if (rollingSummary) {
+  if (rollingSummary || summaryNotice) {
     lines.push('', '## Rolling Summary');
-    lines.push(`- Covers ${rollingSummary.summarizedTurns} older turns (latest ${rollingSummary.recentTurns} shown below).`);
-    for (const item of rollingSummary.items || []) {
-      lines.push(`- ${item}`);
+    if (summaryNotice) {
+      lines.push(`- ${summaryNotice}`);
+    }
+    if (rollingSummary) {
+      if (rollingSummary.source === 'ai') {
+        const model = rollingSummary.model ? ` (${rollingSummary.model})` : '';
+        lines.push(`- Source: AI via codex exec${model}.`);
+      } else {
+        lines.push('- Source: deterministic heuristic.');
+      }
+      lines.push(`- Covers ${rollingSummary.summarizedTurns} older turns (latest ${rollingSummary.recentTurns} shown below).`);
+      for (const item of rollingSummary.items || []) {
+        lines.push(`- ${item}`);
+      }
     }
   }
 
