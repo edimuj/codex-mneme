@@ -14,12 +14,13 @@ import { projectPaths } from './lib/paths.mjs';
 import { readJson, readJsonl } from './lib/fs-utils.mjs';
 import { buildRecentTurns } from './lib/turns.mjs';
 import { buildRollingSummary } from './lib/summary.mjs';
+import { buildSessionStartOutput, clipOutput } from './lib/session-start-render.mjs';
 import { setupCodexCli } from './lib/codex-setup.mjs';
 
 function usage() {
   console.log(`Usage:
   ${basename(process.argv[1])} ingest
-  ${basename(process.argv[1])} session-start [--limit N]
+  ${basename(process.argv[1])} session-start [--limit N] [--max-summary-items N] [--max-recent-chars N] [--max-output-chars N]
   ${basename(process.argv[1])} remember [--type ${REMEMBER_TYPES.join('|')}] <content>
   ${basename(process.argv[1])} remember list
   ${basename(process.argv[1])} remember edit <id> [--type ${REMEMBER_TYPES.join('|')}] [content]
@@ -29,13 +30,68 @@ function usage() {
   ${basename(process.argv[1])} status`);
 }
 
-function parseLimit(args) {
-  const idx = args.indexOf('--limit');
-  if (idx === -1) return 12;
-  const raw = args[idx + 1];
+function readNumberOption(args, index, name, {
+  fallback,
+  min = 1,
+  max = Number.MAX_SAFE_INTEGER
+}) {
+  const raw = args[index + 1];
+  if (!raw || raw.startsWith('--')) {
+    throw new Error(`${name} requires a value`);
+  }
   const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n <= 0) return 12;
-  return Math.min(n, 100);
+  if (!Number.isFinite(n) || n < min) return fallback;
+  return Math.min(n, max);
+}
+
+function parseSessionStartOptions(args) {
+  const out = {
+    limit: 12,
+    maxSummaryItems: 6,
+    maxRecentChars: 0,
+    maxOutputChars: 0
+  };
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--limit') {
+      out.limit = readNumberOption(args, i, '--limit', {
+        fallback: 12,
+        min: 1,
+        max: 100
+      });
+      i += 1;
+      continue;
+    }
+    if (arg === '--max-summary-items') {
+      out.maxSummaryItems = readNumberOption(args, i, '--max-summary-items', {
+        fallback: 6,
+        min: 0,
+        max: 200
+      });
+      i += 1;
+      continue;
+    }
+    if (arg === '--max-recent-chars') {
+      out.maxRecentChars = readNumberOption(args, i, '--max-recent-chars', {
+        fallback: 0,
+        min: 0,
+        max: 2000
+      });
+      i += 1;
+      continue;
+    }
+    if (arg === '--max-output-chars') {
+      out.maxOutputChars = readNumberOption(args, i, '--max-output-chars', {
+        fallback: 0,
+        min: 0,
+        max: 200000
+      });
+      i += 1;
+    }
+  }
+
+  return out;
 }
 
 function summarizeText(text, max = 240) {
@@ -266,50 +322,24 @@ async function main() {
   }
 
   if (cmd === 'session-start') {
+    const options = parseSessionStartOptions(args);
     ingestSessions();
-    const limit = parseLimit(args);
     const paths = projectPaths(process.cwd());
     const remembered = readJson(paths.remembered, []);
     const log = readJsonl(paths.log);
-    const rollingSummary = buildRollingSummary(log, { recentTurnLimit: limit });
-    const recentTurns = buildRecentTurns(log, { limit });
+    const rollingSummary = buildRollingSummary(log, {
+      recentTurnLimit: options.limit,
+      maxItems: options.maxSummaryItems
+    });
+    const recentTurns = buildRecentTurns(log, { limit: options.limit });
 
-    console.log('# Codex-Mneme Context');
-
-    if (Array.isArray(remembered) && remembered.length > 0) {
-      console.log('\n## Remembered');
-      for (const item of remembered) {
-        const type = item?.type || 'note';
-        const content = summarizeText(item?.content || '');
-        if (content) console.log(`- [${type}] ${content}`);
-      }
-    }
-
-    if (rollingSummary) {
-      console.log('\n## Rolling Summary');
-      console.log(`- Covers ${rollingSummary.summarizedTurns} older turns (latest ${rollingSummary.recentTurns} shown below).`);
-      for (const item of rollingSummary.items) {
-        console.log(`- ${item}`);
-      }
-    }
-
-    if (recentTurns.length > 0) {
-      console.log('\n## Recent Turns');
-      for (const turn of recentTurns) {
-        const ts = formatTimestamp(turn.timestamp);
-        if (turn.user) {
-          console.log(`- ${ts} user: ${summarizeText(turn.user, 180)}`);
-        }
-        if (turn.assistant.length > 0) {
-          const assistantText = summarizeText(turn.assistant.join('\n'));
-          console.log(`  ${ts} assistant: ${assistantText}`);
-        }
-      }
-    }
-
-    if (recentTurns.length === 0 && (!Array.isArray(remembered) || remembered.length === 0)) {
-      console.log('\nNo project memory yet. Run `codex-mneme ingest` after some sessions.');
-    }
+    const output = buildSessionStartOutput({
+      remembered,
+      rollingSummary,
+      recentTurns,
+      maxRecentChars: options.maxRecentChars
+    });
+    console.log(clipOutput(output, options.maxOutputChars));
     return;
   }
 

@@ -37,8 +37,12 @@ This gives us:
 - `codex-mneme ingest`
   - incrementally parse Codex sessions for the current project and append normalized turns to memory log
   - work is bounded per run; large backlogs are deferred and drained on subsequent ingests
-- `codex-mneme session-start`
+- `codex-mneme session-start [--limit N] [--max-summary-items N] [--max-recent-chars N] [--max-output-chars N]`
   - print concise context (remembered notes + rolling summary for older history + grouped recent turns)
+  - `--limit`: number of recent turns shown (default `12`)
+  - `--max-summary-items`: cap rolling summary bullets (default `6`, set `0` to disable rolling summary bullets)
+  - `--max-recent-chars`: cap user/assistant text length per recent-turn line
+  - `--max-output-chars`: hard cap final output size (deterministic clipping)
 - `codex-mneme remember [--type note|decision|constraint|todo] "..."`
   - store persistent typed project memory entry
 - `codex-mneme remember list`
@@ -120,7 +124,7 @@ codex-mneme remember edit <id-prefix> --type constraint
 codex-mneme remember forget <id-prefix>
 codex-mneme codex-init --with-agents --apply-notify
 codex-mneme codex-init --global --with-agents --apply-notify
-codex-mneme session-start
+codex-mneme session-start --limit 8 --max-summary-items 4 --max-output-chars 3500
 codex-mneme status
 ```
 

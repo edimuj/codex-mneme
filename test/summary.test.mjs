@@ -50,3 +50,14 @@ test('buildRollingSummary ignores low-value acknowledgements via turn builder', 
   assert.equal(summary.items.length, 1);
   assert.equal(summary.items[0], '[2026-03-18] real question -> real answer');
 });
+
+test('buildRollingSummary returns null when maxItems is zero', () => {
+  const summary = buildRollingSummary([
+    { timestamp: '2026-03-18T10:00:00.000Z', role: 'user', text: 'q1' },
+    { timestamp: '2026-03-18T10:00:01.000Z', role: 'assistant', text: 'a1' },
+    { timestamp: '2026-03-18T10:00:02.000Z', role: 'user', text: 'q2' },
+    { timestamp: '2026-03-18T10:00:03.000Z', role: 'assistant', text: 'a2' }
+  ], { recentTurnLimit: 1, maxItems: 0 });
+
+  assert.equal(summary, null);
+});
