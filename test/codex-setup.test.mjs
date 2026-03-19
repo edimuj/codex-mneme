@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { setupCodexCli } from '../src/lib/codex-setup.mjs';
+import {
+  autoSetupCodexCli,
+  setupCodexCli,
+  shouldAutoSetupCodexCli
+} from '../src/lib/codex-setup.mjs';
 
 function tempProjectDir(prefix) {
   return mkdtempSync(join(tmpdir(), `codex-mneme-codex-setup-${prefix}-`));
@@ -20,6 +24,7 @@ test('setupCodexCli creates project skill and returns notify snippet', () => {
 
   const skillText = readFileSync(result.skill.path, 'utf8');
   assert.ok(skillText.includes('session-start --limit 8'));
+  assert.ok(skillText.includes('Do not ask the user to run mneme commands manually'));
   assert.ok(skillText.includes('remember --type decision|constraint|todo'));
 });
 
@@ -134,6 +139,7 @@ test('setupCodexCli global mode writes skill and AGENTS in codex home', () => {
   assert.equal(existsSync(join(cwd, 'AGENTS.md')), false);
 
   const agentsText = readFileSync(result.agents.path, 'utf8');
+  assert.ok(agentsText.includes('This workflow is agent-owned'));
   assert.ok(agentsText.includes('At session start in every project'));
 
   const second = setupCodexCli({
@@ -162,4 +168,68 @@ test('setupCodexCli global mode applies notify to codex home config by default',
   const configText = readFileSync(result.config.path, 'utf8');
   assert.ok(configText.includes('# codex-mneme:begin'));
   assert.ok(configText.includes('notify = ["bash", "-lc", "codex-mneme ingest >/dev/null 2>&1 || true"]'));
+});
+
+test('shouldAutoSetupCodexCli only enables for global install by default', () => {
+  const cwd = tempProjectDir('auto-check');
+
+  assert.deepEqual(
+    shouldAutoSetupCodexCli({
+      cwd,
+      env: {}
+    }),
+    { enabled: false, reason: 'not_global_install' }
+  );
+
+  assert.deepEqual(
+    shouldAutoSetupCodexCli({
+      cwd,
+      env: { npm_config_global: 'true' }
+    }),
+    { enabled: true, reason: 'global_install' }
+  );
+});
+
+test('shouldAutoSetupCodexCli skips repo checkouts and disabled environments', () => {
+  const cwd = tempProjectDir('auto-skip');
+  mkdirSync(join(cwd, '.git'));
+
+  assert.deepEqual(
+    shouldAutoSetupCodexCli({
+      cwd,
+      env: { npm_config_global: 'true' }
+    }),
+    { enabled: false, reason: 'repo_checkout' }
+  );
+
+  assert.deepEqual(
+    shouldAutoSetupCodexCli({
+      cwd: tempProjectDir('auto-disabled'),
+      env: {
+        npm_config_global: 'true',
+        CODEX_MNEME_AUTO_SETUP: '0'
+      }
+    }),
+    { enabled: false, reason: 'disabled_by_env' }
+  );
+});
+
+test('autoSetupCodexCli applies global setup during global install', () => {
+  const cwd = tempProjectDir('auto-apply');
+  const codexRoot = join(cwd, 'fake-codex-home');
+
+  const result = autoSetupCodexCli({
+    cwd,
+    env: { npm_config_global: 'true' },
+    codexHomePath: codexRoot
+  });
+
+  assert.equal(result.status, 'applied');
+  assert.equal(result.setup.scope, 'global');
+  assert.equal(result.setup.skill.status, 'created');
+  assert.equal(result.setup.agents.status, 'created');
+  assert.equal(result.setup.config.status, 'created');
+  assert.equal(existsSync(join(codexRoot, 'skills', 'codex-mneme', 'SKILL.md')), true);
+  assert.equal(existsSync(join(codexRoot, 'AGENTS.md')), true);
+  assert.equal(existsSync(join(codexRoot, 'config.toml')), true);
 });

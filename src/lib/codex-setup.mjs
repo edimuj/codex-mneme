@@ -24,15 +24,16 @@ description: Use codex-mneme for startup context, durable decisions, constraints
 ---
 # codex-mneme
 
-Use this workflow whenever project continuity matters.
+Use this workflow by default whenever project continuity matters.
+Do not ask the user to run mneme commands manually; this is agent-owned workflow.
 
 ## Startup
-1. Run \`${command} session-start --limit 8\`.
+1. Run \`${command} session-start --limit 8\` before substantive work.
 2. If Codex auth is available and you want AI summary quality, run \`${command} session-start --limit 8 --summary-mode ai --summary-model gpt-5.4-mini\`.
 3. Use the output as context before coding.
 
 ## During work
-1. Record durable items with \`${command} remember --type decision|constraint|todo "<text>"\`.
+1. Record durable items proactively with \`${command} remember --type decision|constraint|todo "<text>"\` when a future session would benefit.
 2. Inspect existing memory with \`${command} remember list\`.
 
 ## Before handoff
@@ -47,9 +48,10 @@ export function codexAgentsBlockTemplate({
 } = {}) {
   const scopeText = scope === 'global' ? 'in every project' : 'in this project';
   return `## Codex-Mneme Workflow
-- At session start ${scopeText}, run \`${command} session-start --limit 8\` and use the output as working context.
+- This workflow is agent-owned. Do not ask the user to run \`${command}\` commands manually.
+- At session start ${scopeText}, run \`${command} session-start --limit 8\` before substantive work and use the output as working context.
 - Optional: use \`${command} session-start --limit 8 --summary-mode ai --summary-model gpt-5.4-mini\` when Codex auth/quota is available.
-- Record durable outcomes with \`${command} remember --type decision|constraint|todo "<text>"\`.
+- Record durable outcomes proactively with \`${command} remember --type decision|constraint|todo "<text>"\` when they will help a future session.
 - Run \`${command} ingest\` before final handoff for substantial tasks.`;
 }
 
@@ -184,5 +186,61 @@ export function setupCodexCli({
     agents,
     config,
     notifySnippet: codexNotifySnippet({ command })
+  };
+}
+
+function isDisabledByEnv(env, key) {
+  const value = String(env?.[key] || '').trim().toLowerCase();
+  return ['0', 'false', 'no', 'off'].includes(value);
+}
+
+export function shouldAutoSetupCodexCli({
+  cwd = process.cwd(),
+  env = process.env
+} = {}) {
+  if (String(env?.npm_config_global || '').toLowerCase() !== 'true') {
+    return { enabled: false, reason: 'not_global_install' };
+  }
+
+  if (isDisabledByEnv(env, 'CODEX_MNEME_AUTO_SETUP')) {
+    return { enabled: false, reason: 'disabled_by_env' };
+  }
+
+  if (isDisabledByEnv(env, 'CI')) {
+    return { enabled: false, reason: 'ci_environment' };
+  }
+
+  if (existsSync(resolve(cwd, '.git'))) {
+    return { enabled: false, reason: 'repo_checkout' };
+  }
+
+  return { enabled: true, reason: 'global_install' };
+}
+
+export function autoSetupCodexCli({
+  cwd = process.cwd(),
+  env = process.env,
+  codexHomePath = '',
+  command = 'codex-mneme'
+} = {}) {
+  const decision = shouldAutoSetupCodexCli({ cwd, env });
+  if (!decision.enabled) {
+    return {
+      status: 'skipped',
+      reason: decision.reason
+    };
+  }
+
+  return {
+    status: 'applied',
+    reason: decision.reason,
+    setup: setupCodexCli({
+      cwd,
+      global: true,
+      withAgents: true,
+      applyNotify: true,
+      codexHomePath,
+      command
+    })
   };
 }

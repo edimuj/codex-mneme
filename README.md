@@ -1,143 +1,197 @@
 # codex-mneme
 
-Lightweight memory layer for Codex CLI, built around the real session history in `~/.codex/sessions`.
+Project memory for Codex CLI.
+
+`codex-mneme` turns raw Codex session history into concise, project-scoped startup context so a fresh session can pick up where the last one left off.
+
+It is built around Codex's native session logs in `~/.codex/sessions`, not a fragile hook-only transcript pipeline.
 
 ## Why this exists
 
-`claude-mneme` relies heavily on Claude hooks and transcript capture. For Codex, we can avoid that complexity by ingesting native Codex session logs and keeping a project-scoped memory index.
+Codex is good at the current turn. Long-running project continuity is the harder part.
 
-This gives us:
-- less fragile capture (source of truth is Codex's own session JSONL)
-- full turn history across sessions
-- a simple "session start context" command
+Important decisions, constraints, and half-finished work end up buried across old sessions. When you come back later, you either re-read history manually or rely on memory and vibes. Both are bad.
 
-## What shipped
+`codex-mneme` solves that by:
 
-- Higher-quality startup context:
-  - chronological turn grouping
-  - low-value acknowledgement trimming
-  - rolling summary for older turns + recent-turn focus
-- Codex CLI onboarding:
-  - `codex-init` supports project scope and global scope
-  - project scope scaffolds a project skill so Codex can discover mneme workflow directly
-  - global scope scaffolds a global skill under `~/.codex/skills`
-  - optional managed `AGENTS.md` block for explicit "when to run mneme" guidance (project or global)
-  - optional managed Codex config `notify` block for per-turn auto-ingest
-- Typed project memory semantics:
-  - `note`, `decision`, `constraint`, `todo`
-  - list/edit/forget flows with id-prefix targeting
-  - legacy `remembered.json` entries auto-normalized
-- Incremental bounded ingest:
-  - cached directory metadata to avoid repeated full directory reads
-  - bounded work per ingest run with deferred backlog drain
-  - known-file hot-set + rotating checks for append detection
+- ingesting Codex's real session JSONL history
+- keeping memory scoped to the current project
+- rendering a compact `session-start` brief for the next session
+- letting you persist durable project facts as typed memory entries
+- working without any external service for the core flow
 
-## CLI commands
+## What you get
 
-- `codex-mneme ingest`
-  - incrementally parse Codex sessions for the current project and append normalized turns to memory log
-  - work is bounded per run; large backlogs are deferred and drained on subsequent ingests
-- `codex-mneme session-start [--limit N] [--max-summary-items N] [--max-recent-chars N] [--max-output-chars N] [--summary-mode deterministic|ai|off] [--summary-model MODEL] [--summary-input-chars N] [--summary-timeout-ms N] [--summary-item-chars N]`
-  - print concise context (remembered notes + rolling summary for older history + grouped recent turns)
-  - `--limit`: number of recent turns shown (default `12`)
-  - `--max-summary-items`: cap rolling summary bullets (default `6`, set `0` to disable rolling summary bullets)
-  - `--max-recent-chars`: cap user/assistant text length per recent-turn line
-  - `--max-output-chars`: hard cap final output size (deterministic clipping)
-  - `--summary-mode`: summary engine (default `deterministic`, use `ai` to call local `codex exec`, `off` to disable rolling summary)
-  - `--summary-model`: model passed to `codex exec --model` when `--summary-mode ai` (default `gpt-5.4-mini`)
-  - `--summary-input-chars`: cap prompt size sent to AI summarizer
-  - `--summary-timeout-ms`: timeout for AI summarizer command
-  - `--summary-item-chars`: cap length per AI summary item
-  - AI mode uses schema-constrained output (`codex exec --output-schema`) and caches summaries in `~/.codex-mneme/projects/<project-key>/summary-cache.json`
-- `codex-mneme remember [--type note|decision|constraint|todo] "..."`
-  - store persistent typed project memory entry
-- `codex-mneme remember list`
-  - list remembered entries with id prefixes
-- `codex-mneme remember edit <id> [--type note|decision|constraint|todo] [content]`
-  - edit remembered content and/or type
-- `codex-mneme remember forget <id>`
-  - remove a remembered entry
-- `codex-mneme hook <SessionStart|UserPromptSubmit|Stop> [--text "..."]`
-  - optional hook entrypoint for Codex hook events (disabled by default)
-  - only active when `CODEX_MNEME_ENABLE_HOOKS=1`
-  - `SessionStart`/`Stop` trigger normal history ingest; `UserPromptSubmit` records hook signal only
-- `codex-mneme codex-init [--global] [--with-agents] [--apply-notify] [--notify-config path] [--force] [--command name]`
-  - scaffold Codex integration files
-  - default (project mode): writes `.agents/skills/codex-mneme/SKILL.md`
-  - `--global`: writes `~/.codex/skills/codex-mneme/SKILL.md`
-  - with `--with-agents`: inserts/updates managed Codex-Mneme block in `AGENTS.md` (project mode) or `~/.codex/AGENTS.md` (global mode)
-  - with `--apply-notify`, inserts/updates a managed notify block in Codex config (`~/.codex/config.toml` by default)
-  - use `--notify-config` to target a custom config file path (relative to active root or absolute)
-  - prints the same managed notify block as a snippet for manual copy/paste
-- `codex-mneme status`
-  - show memory file counts, ingest backlog stats, hook status, and project paths
+- Project-scoped memory built from native Codex session history
+- Concise startup context with remembered items, rolling summary, and recent turns
+- Typed durable memory: `note`, `decision`, `constraint`, `todo`
+- Incremental, bounded ingest for large session histories
+- Optional AI summaries through your local Codex CLI auth
+- Optional hook integration, while keeping history ingest as the canonical path
+- Codex-native setup via `codex-init`
 
 ## Install
 
-From npm (recommended):
+Recommended:
 
 ```bash
 npm install -g codex-mneme
 ```
 
-Run without global install (works across old/new npm versions):
+On global install, `codex-mneme` now attempts to auto-configure Codex for you by:
+
+- installing the global `codex-mneme` skill in `~/.codex/skills/`
+- inserting a managed global `~/.codex/AGENTS.md` workflow block
+- inserting a managed `notify` block in `~/.codex/config.toml` when there is no conflicting unmanaged `notify` setting
+
+If you want to disable install-time setup, use:
+
+```bash
+CODEX_MNEME_AUTO_SETUP=0 npm install -g codex-mneme
+```
+
+Run without installing globally:
 
 ```bash
 npx --yes npm:codex-mneme@latest status
 ```
 
-If you are running this command from inside the `codex-mneme` repo itself, prefer the `npm:` prefix form above.
-
-From source (local dev):
+From source:
 
 ```bash
 git clone https://github.com/edimuj/codex-mneme.git
-cd ~/projects/oss/codex-mneme
+cd codex-mneme
 npm install
 npm link
 ```
 
-## Codex CLI integration (recommended)
+## Quick start
 
-```bash
-codex-mneme codex-init --with-agents --apply-notify
-```
-
-This makes Codex usage explicit and discoverable:
-- creates `.agents/skills/codex-mneme/SKILL.md` so Codex can use a project skill for mneme workflow
-- writes/updates a managed `AGENTS.md` block so agents are told exactly when to run mneme
-- writes/updates a managed notify block in `~/.codex/config.toml` for per-turn auto-ingest
-- if your config already has an unmanaged `notify = ...`, setup reports a conflict and leaves the file unchanged
-
-For global setup across all projects:
+1. Install `codex-mneme`.
+2. Global install should auto-configure Codex. If you want to apply or re-apply it manually:
 
 ```bash
 codex-mneme codex-init --global --with-agents --apply-notify
 ```
 
-This writes:
-- `~/.codex/skills/codex-mneme/SKILL.md`
-- `~/.codex/AGENTS.md` (managed block)
-- `~/.codex/config.toml` (managed notify block)
+3. Generate startup context for the current project:
 
-## Usage
+```bash
+codex-mneme session-start --limit 8
+```
+
+4. Save durable project memory when something should survive future sessions:
+
+```bash
+codex-mneme remember --type decision "Session JSONL is the canonical source of truth"
+codex-mneme remember --type constraint "Do not depend on hooks for correctness"
+```
+
+5. Refresh memory from recent Codex sessions:
 
 ```bash
 codex-mneme ingest
-codex-mneme remember --type decision "Log JSONL is the canonical source"
+```
+
+## Example workflow
+
+Resume work on a project:
+
+```bash
+codex-mneme session-start --limit 8 --max-summary-items 5
+```
+
+Capture an important decision:
+
+```bash
+codex-mneme remember --type decision "Use deterministic summaries by default"
+```
+
+Check what is currently stored:
+
+```bash
 codex-mneme remember list
-codex-mneme remember edit <id-prefix> --type constraint
-codex-mneme remember forget <id-prefix>
-codex-mneme codex-init --with-agents --apply-notify
-codex-mneme codex-init --global --with-agents --apply-notify
-codex-mneme session-start --limit 8 --max-summary-items 4 --max-output-chars 3500
-codex-mneme session-start --summary-mode ai --summary-model gpt-5.4-mini --max-summary-items 5
 codex-mneme status
 ```
 
-## AI Summarization With Codex Subscription
+Use AI summaries when you want better compression:
 
-`codex-mneme` can use your local Codex CLI authentication for rolling summaries:
+```bash
+codex login
+codex-mneme session-start --summary-mode ai --summary-model gpt-5.4-mini
+```
+
+Representative `session-start` output:
+
+```text
+# Codex-Mneme Context
+
+## Remembered
+- [decision] Session JSONL is the canonical source of truth.
+- [constraint] Do not depend on hooks for correctness.
+
+## Rolling Summary
+- [2026-03-18] Added bounded ingest and deferred backlog draining.
+- [2026-03-19] Shipped AI summary caching and deterministic output caps.
+
+## Recent Turns
+- 2026-03-19 09:12:21 user: Let's improve the README so people actually want to try this.
+  2026-03-19 09:12:21 assistant: Plan: rewrite positioning, install, quick start, and command overview.
+```
+
+## CLI overview
+
+| Command | What it does |
+| --- | --- |
+| `codex-mneme ingest` | Parse Codex sessions for the current project and update the normalized memory log. |
+| `codex-mneme session-start` | Print startup context: remembered entries, rolling summary, and recent turns. |
+| `codex-mneme remember` | Save a durable project memory entry. |
+| `codex-mneme remember list` | List remembered entries with id prefixes. |
+| `codex-mneme remember edit` | Edit remembered content and/or type. |
+| `codex-mneme remember forget` | Remove a remembered entry. |
+| `codex-mneme hook` | Optional hook entrypoint for Codex hook events. |
+| `codex-mneme codex-init` | Scaffold Codex integration files for project or global setup. |
+| `codex-mneme status` | Show memory paths, tracked files, backlog state, and hook status. |
+
+Most useful `session-start` flags:
+
+| Flag | Purpose |
+| --- | --- |
+| `--limit N` | Number of recent turns to show. |
+| `--max-summary-items N` | Cap rolling summary bullets. |
+| `--max-recent-chars N` | Cap text length per recent turn line. |
+| `--max-output-chars N` | Hard cap final output size. |
+| `--summary-mode deterministic|ai|off` | Choose summary engine. |
+| `--summary-model MODEL` | Model used for AI summaries. |
+| `--summary-input-chars N` | Cap prompt size sent to the AI summarizer. |
+| `--summary-timeout-ms N` | Timeout for AI summarization. |
+| `--summary-item-chars N` | Cap length of each AI summary item. |
+
+## Recommended Codex setup
+
+Global install should handle this automatically. If you want to run it manually or re-apply it:
+
+```bash
+codex-mneme codex-init --global --with-agents --apply-notify
+```
+
+That setup:
+
+- creates `~/.codex/skills/codex-mneme/SKILL.md`
+- inserts or updates a managed `~/.codex/AGENTS.md` block
+- inserts or updates a managed `notify` block in `~/.codex/config.toml`
+
+For a project-local setup instead:
+
+```bash
+codex-mneme codex-init --with-agents --apply-notify
+```
+
+## AI summaries
+
+By default, `session-start` uses deterministic summarization. That keeps the core workflow local, cheap, and predictable.
+
+If you have Codex CLI auth and want better compression for long histories, enable AI summaries:
 
 ```bash
 codex login
@@ -145,19 +199,19 @@ codex-mneme session-start --summary-mode ai --summary-model gpt-5.4-mini
 ```
 
 Notes:
-- AI mode calls `codex exec` non-interactively.
-- AI mode enforces structured output with `--output-schema` and strict JSON parsing.
-- AI mode reuses cached summaries when the effective prompt/model are unchanged.
-- If auth/quota/network fails, mneme falls back to deterministic summary automatically.
-- Keep AI summary bounded with `--max-summary-items`, `--summary-item-chars`, and `--summary-input-chars`.
 
-## Notes about hooks
+- AI mode calls `codex exec` non-interactively
+- output is schema-constrained with `--output-schema`
+- summaries are cached when the effective inputs are unchanged
+- if auth, quota, or runtime fails, it falls back to deterministic summary automatically
 
-Codex currently exposes an experimental `codex_hooks` feature in source/tests with `SessionStart`, `UserPromptSubmit`, and `Stop` events.
+## Hooks are optional
 
-For this repo, history ingest remains canonical and hooks are opt-in acceleration only.
+`codex-mneme` supports Codex hook events, but hooks are not required for correctness.
 
-Enable hooks:
+History ingest remains the canonical path. Hooks are an opt-in acceleration layer.
+
+Enable them explicitly:
 
 ```bash
 export CODEX_MNEME_ENABLE_HOOKS=1
@@ -165,3 +219,36 @@ codex-mneme hook SessionStart
 codex-mneme hook UserPromptSubmit --text "Investigate ingest performance"
 codex-mneme hook Stop
 ```
+
+## How it works
+
+At a high level:
+
+1. Read Codex session `.jsonl` files from `~/.codex/sessions`.
+2. Scope entries to the current project using `session_meta.payload.cwd`.
+3. Normalize useful user and final assistant turns into a project memory log.
+4. Store durable remembered items separately.
+5. Render a short startup brief for the next session.
+
+Project memory is stored under:
+
+```text
+~/.codex-mneme/projects/<project-key>/
+```
+
+That directory contains the normalized log, remembered items, ingest state, optional hook events, and optional AI summary cache.
+
+## Development
+
+```bash
+git clone https://github.com/edimuj/codex-mneme.git
+cd codex-mneme
+npm install
+npm test
+node src/cli.mjs session-start --limit 8
+node src/cli.mjs status
+```
+
+## License
+
+MIT
