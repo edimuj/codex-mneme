@@ -48,6 +48,7 @@ This gives us:
   - `--summary-input-chars`: cap prompt size sent to AI summarizer
   - `--summary-timeout-ms`: timeout for AI summarizer command
   - `--summary-item-chars`: cap length per AI summary item
+  - AI mode uses schema-constrained output (`codex exec --output-schema`) and caches summaries in `~/.codex-mneme/projects/<project-key>/summary-cache.json`
 - `codex-mneme remember [--type note|decision|constraint|todo] "..."`
   - store persistent typed project memory entry
 - `codex-mneme remember list`
@@ -145,6 +146,8 @@ codex-mneme session-start --summary-mode ai --summary-model gpt-5.4-mini
 
 Notes:
 - AI mode calls `codex exec` non-interactively.
+- AI mode enforces structured output with `--output-schema` and strict JSON parsing.
+- AI mode reuses cached summaries when the effective prompt/model are unchanged.
 - If auth/quota/network fails, mneme falls back to deterministic summary automatically.
 - Keep AI summary bounded with `--max-summary-items`, `--summary-item-chars`, and `--summary-input-chars`.
 

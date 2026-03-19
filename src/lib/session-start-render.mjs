@@ -42,7 +42,8 @@ export function buildSessionStartOutput({
     if (rollingSummary) {
       if (rollingSummary.source === 'ai') {
         const model = rollingSummary.model ? ` (${rollingSummary.model})` : '';
-        lines.push(`- Source: AI via codex exec${model}.`);
+        const cache = rollingSummary.cached ? ' [cache hit]' : '';
+        lines.push(`- Source: AI via codex exec${model}${cache}.`);
       } else {
         lines.push('- Source: deterministic heuristic.');
       }

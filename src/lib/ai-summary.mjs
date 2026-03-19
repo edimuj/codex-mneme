@@ -1,8 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildRecentTurns } from './turns.mjs';
+
+const AI_SUMMARY_SCHEMA_VERSION = 1;
 
 function normalizeOneLine(text) {
   return String(text || '').replace(/\s+/g, ' ').trim();
@@ -55,67 +58,83 @@ function sanitizeItem(text, maxChars) {
   return out;
 }
 
-export function parseAiSummaryItems(rawText, { maxItems = 6, itemMaxChars = 220 } = {}) {
-  const source = String(rawText || '').trim();
-  if (!source) return [];
-
+function sanitizeItems(values, { maxItems = 6, itemMaxChars = 220 } = {}) {
   const cap = Number.isFinite(maxItems) && maxItems > 0 ? maxItems : 6;
   const maxChars = Number.isFinite(itemMaxChars) && itemMaxChars > 0 ? itemMaxChars : 220;
-
-  const candidates = [];
-  const pushItem = (value) => {
-    if (typeof value !== 'string') return;
-    const sanitized = sanitizeItem(value, maxChars);
-    if (!sanitized) return;
-    candidates.push(sanitized);
-  };
-
-  const tryParseJson = (text) => {
-    try {
-      const parsed = JSON.parse(text);
-      const items = Array.isArray(parsed) ? parsed : parsed?.items;
-      if (!Array.isArray(items)) return false;
-      for (const item of items) pushItem(item);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  if (!tryParseJson(source)) {
-    const start = source.indexOf('{');
-    const end = source.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      tryParseJson(source.slice(start, end + 1));
-    }
-  }
-
-  if (candidates.length === 0) {
-    for (const line of source.split('\n')) {
-      pushItem(line);
-      if (candidates.length >= cap) break;
-    }
-  }
-
   const deduped = [];
   const seen = new Set();
-  for (const item of candidates) {
-    if (seen.has(item)) continue;
-    seen.add(item);
-    deduped.push(item);
+
+  for (const value of values || []) {
+    if (typeof value !== 'string') continue;
+    const sanitized = sanitizeItem(value, maxChars);
+    if (!sanitized || seen.has(sanitized)) continue;
+    seen.add(sanitized);
+    deduped.push(sanitized);
     if (deduped.length >= cap) break;
   }
+
   return deduped;
+}
+
+function buildOutputSchema({ maxItems, itemMaxChars }) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['items'],
+    properties: {
+      items: {
+        type: 'array',
+        maxItems,
+        items: {
+          type: 'string',
+          maxLength: itemMaxChars
+        }
+      }
+    }
+  };
+}
+
+function buildCacheKey({ model, prompt }) {
+  const hash = createHash('sha256');
+  hash.update(`ai-summary-schema-v${AI_SUMMARY_SCHEMA_VERSION}\n`);
+  hash.update(String(model || '').trim());
+  hash.update('\n');
+  hash.update(String(prompt || ''));
+  return hash.digest('hex');
+}
+
+export function parseAiSummaryItems(rawText, { maxItems = 6, itemMaxChars = 220 } = {}) {
+  const source = String(rawText || '').trim();
+  if (!source) {
+    throw new Error('AI summary payload is empty');
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(source);
+  } catch {
+    throw new Error('AI summary payload is not valid JSON');
+  }
+
+  const rawItems = Array.isArray(parsed) ? parsed : parsed?.items;
+  if (!Array.isArray(rawItems)) {
+    throw new Error('AI summary payload missing items array');
+  }
+
+  return sanitizeItems(rawItems, { maxItems, itemMaxChars });
 }
 
 function runCodexExec({
   prompt,
   model,
   timeoutMs,
-  codexPath
+  codexPath,
+  outputSchema
 }) {
   const tmpRoot = mkdtempSync(join(tmpdir(), 'codex-mneme-'));
-  const outputFile = join(tmpRoot, 'last-message.txt');
+  const outputFile = join(tmpRoot, 'last-message.json');
+  const schemaFile = join(tmpRoot, 'output-schema.json');
+  writeFileSync(schemaFile, JSON.stringify(outputSchema, null, 2), 'utf8');
 
   try {
     const result = spawnSync(codexPath, [
@@ -125,6 +144,8 @@ function runCodexExec({
       'read-only',
       '--model',
       model,
+      '--output-schema',
+      schemaFile,
       '--output-last-message',
       outputFile,
       '-'
@@ -161,6 +182,11 @@ function runCodexExec({
   } finally {
     rmSync(tmpRoot, { recursive: true, force: true });
   }
+}
+
+function normalizeCachedItems(value, { maxItems, itemMaxChars }) {
+  if (!Array.isArray(value)) return null;
+  return sanitizeItems(value, { maxItems, itemMaxChars });
 }
 
 export function buildAiRollingSummary(entries, {
@@ -207,27 +233,48 @@ export function buildAiRollingSummary(entries, {
   const prompt = [
     'Summarize coding conversation turns for startup context in a future Codex session.',
     '',
-    'Return STRICT JSON only in this shape:',
-    '{"items":["..."]}',
-    '',
-    'Rules:',
-    `- Max ${maxItems} items.`,
-    `- Each item must be <= ${itemMaxChars} characters.`,
-    '- Focus on durable context: decisions, constraints, todo/next steps, unresolved bugs, and important implementation facts.',
-    '- Ignore social chatter, acknowledgements, and pleasantries.',
-    '- Do not invent facts.',
-    '- If there is nothing worth keeping, return {"items":[]}.',
+    'Return concise durable memory items for context carry-over.',
+    `Return at most ${maxItems} items.`,
+    `Keep each item <= ${itemMaxChars} characters.`,
+    'Focus on: decisions, constraints, todos/next steps, unresolved bugs, and implementation facts.',
+    'Ignore social chatter and acknowledgements.',
     '',
     'Older turns to summarize:',
     rendered
   ].join('\n');
 
+  const cacheKey = buildCacheKey({ model, prompt });
+  const baseSummary = {
+    source: 'ai',
+    model,
+    sampledTurns: sampled.length,
+    totalTurns: turns.length,
+    summarizedTurns: olderTurns.length,
+    recentTurns: recentTurnLimit
+  };
+
+  const readCache = typeof deps.readCache === 'function' ? deps.readCache : null;
+  if (readCache) {
+    const cached = readCache({ cacheKey, model });
+    const cachedItems = normalizeCachedItems(cached, { maxItems, itemMaxChars });
+    if (cachedItems) {
+      if (cachedItems.length === 0) return null;
+      return {
+        ...baseSummary,
+        cached: true,
+        items: cachedItems
+      };
+    }
+  }
+
+  const outputSchema = buildOutputSchema({ maxItems, itemMaxChars });
   const runExec = typeof deps.runExec === 'function' ? deps.runExec : runCodexExec;
   const result = runExec({
     prompt,
     model,
     timeoutMs,
-    codexPath
+    codexPath,
+    outputSchema
   });
 
   if (!result || result.ok !== true) {
@@ -239,15 +286,21 @@ export function buildAiRollingSummary(entries, {
     maxItems,
     itemMaxChars
   });
+
+  const writeCache = typeof deps.writeCache === 'function' ? deps.writeCache : null;
+  if (writeCache) {
+    writeCache({
+      cacheKey,
+      model,
+      items
+    });
+  }
+
   if (items.length === 0) return null;
 
   return {
-    source: 'ai',
-    model,
-    sampledTurns: sampled.length,
-    totalTurns: turns.length,
-    summarizedTurns: olderTurns.length,
-    recentTurns: recentTurnLimit,
+    ...baseSummary,
+    cached: false,
     items
   };
 }

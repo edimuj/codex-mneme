@@ -11,12 +11,14 @@ import {
 } from './lib/remember.mjs';
 import { handleHookEvent, hooksEnabled } from './lib/hooks.mjs';
 import { projectPaths } from './lib/paths.mjs';
-import { readJson, readJsonl } from './lib/fs-utils.mjs';
+import { readJson, readJsonl, writeJsonAtomic } from './lib/fs-utils.mjs';
 import { buildRecentTurns } from './lib/turns.mjs';
 import { buildRollingSummary } from './lib/summary.mjs';
 import { buildAiRollingSummary } from './lib/ai-summary.mjs';
 import { buildSessionStartOutput, clipOutput } from './lib/session-start-render.mjs';
 import { setupCodexCli } from './lib/codex-setup.mjs';
+
+const AI_SUMMARY_CACHE_VERSION = 1;
 
 function usage() {
   console.log(`Usage:
@@ -153,6 +155,29 @@ function summarizeText(text, max = 240) {
   const oneLine = String(text).replace(/\s+/g, ' ').trim();
   if (oneLine.length <= max) return oneLine;
   return `${oneLine.slice(0, max - 1)}…`;
+}
+
+function readAiSummaryCache(path, { cacheKey }) {
+  const cache = readJson(path, null);
+  if (!cache || typeof cache !== 'object') return null;
+  if (cache.version !== AI_SUMMARY_CACHE_VERSION) return null;
+  if (cache.cacheKey !== cacheKey) return null;
+  if (!Array.isArray(cache.items)) return null;
+  return cache.items;
+}
+
+function writeAiSummaryCache(path, {
+  cacheKey,
+  model,
+  items
+}) {
+  writeJsonAtomic(path, {
+    version: AI_SUMMARY_CACHE_VERSION,
+    cacheKey,
+    model,
+    items: Array.isArray(items) ? items : [],
+    updatedAt: new Date().toISOString()
+  });
 }
 
 function formatTimestamp(value) {
@@ -395,6 +420,13 @@ async function main() {
             maxInputChars: options.summaryInputChars,
             timeoutMs: options.summaryTimeoutMs,
             itemMaxChars: options.summaryItemChars
+          }, {
+            readCache: ({ cacheKey }) => readAiSummaryCache(paths.summaryCache, { cacheKey }),
+            writeCache: ({ cacheKey, model, items }) => writeAiSummaryCache(paths.summaryCache, {
+              cacheKey,
+              model,
+              items
+            })
           });
         } catch (error) {
           const reason = summarizeText(error?.message || 'unknown error', 140);

@@ -65,6 +65,23 @@ test('buildSessionStartOutput renders ai summary model metadata', () => {
   assert.match(out, /Source: AI via codex exec \(gpt-5\.4-mini\)\./);
 });
 
+test('buildSessionStartOutput renders ai cache-hit marker', () => {
+  const out = buildSessionStartOutput({
+    remembered: [],
+    rollingSummary: {
+      source: 'ai',
+      model: 'gpt-5.4-mini',
+      cached: true,
+      summarizedTurns: 5,
+      recentTurns: 2,
+      items: ['todo: ship npm release']
+    },
+    recentTurns: []
+  });
+
+  assert.match(out, /Source: AI via codex exec \(gpt-5\.4-mini\) \[cache hit\]\./);
+});
+
 test('clipOutput enforces deterministic max output size', () => {
   const source = 'abcdefghijklmnopqrstuvwxyz';
   assert.equal(clipOutput(source, 0), source);
