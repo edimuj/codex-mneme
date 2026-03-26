@@ -3,3 +3,5 @@ node_modules/
 AGENTS.md
 .private/
 .idea/
+.idea/share/
+share/

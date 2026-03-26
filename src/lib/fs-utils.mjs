@@ -25,6 +25,20 @@ export function writeJsonAtomic(path, value) {
   }
 }
 
+export function writeJsonlAtomic(path, entries) {
+  ensureDir(dirname(path));
+  const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  const rows = Array.isArray(entries) ? entries : [];
+  const text = rows.map((entry) => JSON.stringify(entry)).join('\n');
+  writeFileSync(tmp, text ? `${text}\n` : '');
+  renameSync(tmp, path);
+  try {
+    rmSync(tmp, { force: true });
+  } catch {
+    // no-op
+  }
+}
+
 export function readJsonl(path) {
   try {
     const text = readFileSync(path, 'utf8');

@@ -98,7 +98,7 @@ codex-mneme ingest
 Resume work on a project:
 
 ```bash
-codex-mneme session-start --limit 8 --max-summary-items 5
+codex-mneme session-start --limit 8 --max-summary-items 5 --max-remembered-items 10
 ```
 
 Capture an important decision:
@@ -159,6 +159,7 @@ Most useful `session-start` flags:
 | --- | --- |
 | `--limit N` | Number of recent turns to show. |
 | `--max-summary-items N` | Cap rolling summary bullets. |
+| `--max-remembered-items N` | Cap remembered entries shown (prioritized by type, then recency). |
 | `--max-recent-chars N` | Cap text length per recent turn line. |
 | `--max-output-chars N` | Hard cap final output size. |
 | `--summary-mode deterministic|ai|off` | Choose summary engine. |

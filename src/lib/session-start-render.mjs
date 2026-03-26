@@ -4,6 +4,55 @@ function summarizeText(text, max = 240) {
   return `${oneLine.slice(0, max - 1)}…`;
 }
 
+const REMEMBER_PRIORITY = {
+  constraint: 0,
+  todo: 1,
+  decision: 2,
+  note: 3
+};
+
+function parseEpoch(value) {
+  const ts = Date.parse(String(value || ''));
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+export function selectRememberedItems(remembered, { maxItems = 0 } = {}) {
+  const list = Array.isArray(remembered) ? remembered : [];
+  const normalized = list
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => {
+      const type = String(item.type || 'note').toLowerCase();
+      const content = String(item.content || '').trim();
+      const priority = Object.hasOwn(REMEMBER_PRIORITY, type)
+        ? REMEMBER_PRIORITY[type]
+        : REMEMBER_PRIORITY.note;
+      const sortTs = parseEpoch(item.updatedAt || item.timestamp);
+      return {
+        item: { ...item, type, content },
+        priority,
+        sortTs,
+        index
+      };
+    })
+    .filter(({ item }) => Boolean(item.content))
+    .sort((a, b) => {
+      const byPriority = a.priority - b.priority;
+      if (byPriority !== 0) return byPriority;
+      const byTs = b.sortTs - a.sortTs;
+      if (byTs !== 0) return byTs;
+      return a.index - b.index;
+    });
+
+  const cap = Number.isFinite(maxItems) ? maxItems : Number.parseInt(String(maxItems || '0'), 10);
+  const bounded = cap > 0 ? normalized.slice(0, cap) : normalized;
+
+  return {
+    total: normalized.length,
+    omitted: Math.max(0, normalized.length - bounded.length),
+    items: bounded.map(({ item }) => item)
+  };
+}
+
 export function clipOutput(text, maxChars = 0) {
   const source = String(text || '');
   const n = Number.parseInt(String(maxChars || '0'), 10);
@@ -15,6 +64,7 @@ export function clipOutput(text, maxChars = 0) {
 
 export function buildSessionStartOutput({
   remembered = [],
+  rememberedNotice = '',
   rollingSummary = null,
   recentTurns = [],
   maxRecentChars = 0,
@@ -27,6 +77,9 @@ export function buildSessionStartOutput({
 
   if (Array.isArray(remembered) && remembered.length > 0) {
     lines.push('', '## Remembered');
+    if (rememberedNotice) {
+      lines.push(`- ${rememberedNotice}`);
+    }
     for (const item of remembered) {
       const type = item?.type || 'note';
       const content = summarizeText(item?.content || '');

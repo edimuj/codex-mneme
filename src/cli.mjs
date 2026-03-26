@@ -15,7 +15,7 @@ import { readJson, readJsonl, writeJsonAtomic } from './lib/fs-utils.mjs';
 import { buildRecentTurns } from './lib/turns.mjs';
 import { buildRollingSummary } from './lib/summary.mjs';
 import { buildAiRollingSummary } from './lib/ai-summary.mjs';
-import { buildSessionStartOutput, clipOutput } from './lib/session-start-render.mjs';
+import { buildSessionStartOutput, clipOutput, selectRememberedItems } from './lib/session-start-render.mjs';
 import { setupCodexCli } from './lib/codex-setup.mjs';
 
 const AI_SUMMARY_CACHE_VERSION = 1;
@@ -23,7 +23,7 @@ const AI_SUMMARY_CACHE_VERSION = 1;
 function usage() {
   console.log(`Usage:
   ${basename(process.argv[1])} ingest
-  ${basename(process.argv[1])} session-start [--limit N] [--max-summary-items N] [--max-recent-chars N] [--max-output-chars N] [--summary-mode deterministic|ai|off] [--summary-model MODEL] [--summary-input-chars N] [--summary-timeout-ms N] [--summary-item-chars N]
+  ${basename(process.argv[1])} session-start [--limit N] [--max-summary-items N] [--max-remembered-items N] [--max-recent-chars N] [--max-output-chars N] [--summary-mode deterministic|ai|off] [--summary-model MODEL] [--summary-input-chars N] [--summary-timeout-ms N] [--summary-item-chars N]
   ${basename(process.argv[1])} remember [--type ${REMEMBER_TYPES.join('|')}] <content>
   ${basename(process.argv[1])} remember list
   ${basename(process.argv[1])} remember edit <id> [--type ${REMEMBER_TYPES.join('|')}] [content]
@@ -59,6 +59,7 @@ function parseSessionStartOptions(args) {
   const out = {
     limit: 12,
     maxSummaryItems: 6,
+    maxRememberedItems: 12,
     maxRecentChars: 0,
     maxOutputChars: 0,
     summaryMode: 'deterministic',
@@ -82,6 +83,15 @@ function parseSessionStartOptions(args) {
     if (arg === '--max-summary-items') {
       out.maxSummaryItems = readNumberOption(args, i, '--max-summary-items', {
         fallback: 6,
+        min: 0,
+        max: 200
+      });
+      i += 1;
+      continue;
+    }
+    if (arg === '--max-remembered-items') {
+      out.maxRememberedItems = readNumberOption(args, i, '--max-remembered-items', {
+        fallback: 12,
         min: 0,
         max: 200
       });
@@ -405,10 +415,19 @@ async function main() {
     const options = parseSessionStartOptions(args);
     ingestSessions();
     const paths = projectPaths(process.cwd());
-    const remembered = readJson(paths.remembered, []);
+    const rememberedAll = readJson(paths.remembered, []);
+    const rememberedSelection = selectRememberedItems(rememberedAll, {
+      maxItems: options.maxRememberedItems
+    });
+    const remembered = rememberedSelection.items;
     const log = readJsonl(paths.log);
     let rollingSummary = null;
     let summaryNotice = '';
+    let rememberedNotice = '';
+
+    if (rememberedSelection.omitted > 0 && options.maxRememberedItems > 0) {
+      rememberedNotice = `Showing ${remembered.length} of ${rememberedSelection.total} remembered items (by type priority + recency).`;
+    }
 
     if (options.summaryMode !== 'off') {
       if (options.summaryMode === 'ai') {
@@ -446,6 +465,7 @@ async function main() {
 
     const output = buildSessionStartOutput({
       remembered,
+      rememberedNotice,
       rollingSummary,
       recentTurns,
       maxRecentChars: options.maxRecentChars,

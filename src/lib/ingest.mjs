@@ -1,7 +1,7 @@
-import { appendFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { ensureDir, readJson, readJsonl, writeJsonAtomic } from './fs-utils.mjs';
+import { ensureDir, readJson, readJsonl, writeJsonAtomic, writeJsonlAtomic } from './fs-utils.mjs';
 import { codexHome, projectPaths } from './paths.mjs';
 import { parseSessionFile } from './session-parser.mjs';
 
@@ -11,9 +11,68 @@ const DEFAULT_HOT_FILE_COUNT = 32;
 const MAX_PENDING_FILES = 5000;
 
 function entryHash(entry) {
+  const sourceFile = typeof entry?.sourceFile === 'string' ? entry.sourceFile : '';
+  const timestamp = typeof entry?.timestamp === 'string' ? entry.timestamp : '';
+  const role = typeof entry?.role === 'string' ? entry.role : '';
+  const text = typeof entry?.text === 'string' ? entry.text : '';
   return createHash('sha1')
-    .update(`${entry.timestamp}\n${entry.role}\n${entry.text}`)
+    .update(`${sourceFile}\n${timestamp}\n${role}\n${text}`)
     .digest('hex');
+}
+
+function normalizeLogEntry(rawEntry) {
+  if (!rawEntry || typeof rawEntry !== 'object') return null;
+
+  const role = rawEntry.role === 'user' || rawEntry.role === 'assistant'
+    ? rawEntry.role
+    : null;
+  if (!role) return null;
+
+  const text = String(rawEntry.text || '').trim();
+  if (!text) return null;
+
+  return {
+    timestamp: typeof rawEntry.timestamp === 'string' ? rawEntry.timestamp : '',
+    role,
+    text,
+    sourceFile: typeof rawEntry.sourceFile === 'string' ? rawEntry.sourceFile : ''
+  };
+}
+
+function compactLogEntries(rawEntries) {
+  const rows = Array.isArray(rawEntries) ? rawEntries : [];
+  const compacted = [];
+  const seen = new Set();
+  let dirty = false;
+
+  for (const rawEntry of rows) {
+    const normalized = normalizeLogEntry(rawEntry);
+    if (!normalized) {
+      dirty = true;
+      continue;
+    }
+
+    const hash = entryHash(normalized);
+    if (seen.has(hash)) {
+      dirty = true;
+      continue;
+    }
+    seen.add(hash);
+
+    if (
+      rawEntry.hash !== hash
+      || rawEntry.timestamp !== normalized.timestamp
+      || rawEntry.role !== normalized.role
+      || rawEntry.text !== normalized.text
+      || rawEntry.sourceFile !== normalized.sourceFile
+    ) {
+      dirty = true;
+    }
+
+    compacted.push({ ...normalized, hash });
+  }
+
+  return { entries: compacted, seen, dirty };
 }
 
 function normalizeDirEntry(entry) {
@@ -197,8 +256,9 @@ export function ingestSessions({
   ensureDir(paths.base);
 
   const state = normalizeState(readJson(paths.state, { files: {} }));
-  const existing = readJsonl(paths.log);
-  const seen = new Set(existing.map((entry) => entry.hash).filter(Boolean));
+  const compactedLog = compactLogEntries(readJsonl(paths.log));
+  const existing = compactedLog.entries;
+  const seen = compactedLog.seen;
 
   const discovery = inspectKnownDirectories(resolve(sessionsRoot), state.dirs);
   state.dirs = discovery.nextDirs;
@@ -331,9 +391,8 @@ export function ingestSessions({
 
   state.pendingFiles = deferred.slice(0, MAX_PENDING_FILES);
 
-  if (appended.length > 0) {
-    const lines = appended.map((entry) => JSON.stringify(entry)).join('\n') + '\n';
-    appendFileSync(paths.log, lines);
+  if (compactedLog.dirty || appended.length > 0) {
+    writeJsonlAtomic(paths.log, existing.concat(appended));
   }
 
   writeJsonAtomic(paths.state, state);

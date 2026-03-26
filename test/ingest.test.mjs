@@ -157,3 +157,88 @@ test('ingestSessions detects appended content from known files without dir chang
   });
   assert.equal(third.appended, 0);
 });
+
+test('ingestSessions keeps identical turns from different session files', { concurrency: false }, () => {
+  const cwd = createProjectDir('ingest-source-aware');
+  const sessionsRoot = createSessionsRoot('source-aware');
+
+  writeSessionFile({
+    sessionsRoot,
+    relDir: '2026/03/18',
+    name: 'session-a.jsonl',
+    cwd,
+    messages: [
+      userMessage('2026-03-18T12:00:00.000Z', 'same question'),
+      assistantFinal('2026-03-18T12:00:01.000Z', 'same answer')
+    ]
+  });
+
+  writeSessionFile({
+    sessionsRoot,
+    relDir: '2026/03/18',
+    name: 'session-b.jsonl',
+    cwd,
+    messages: [
+      userMessage('2026-03-18T12:00:00.000Z', 'same question'),
+      assistantFinal('2026-03-18T12:00:01.000Z', 'same answer')
+    ]
+  });
+
+  const result = ingestSessions({
+    cwd,
+    sessionsRoot,
+    maxFilesPerRun: 10,
+    maxKnownFileStats: 10
+  });
+
+  assert.equal(result.appended, 4);
+  const log = readJsonl(projectPaths(cwd).log);
+  assert.equal(log.length, 4);
+});
+
+test('ingestSessions compacts duplicate rows already present in log', { concurrency: false }, () => {
+  const cwd = createProjectDir('ingest-compact');
+  const sessionsRoot = createSessionsRoot('compact');
+  const paths = projectPaths(cwd);
+
+  writeSessionFile({
+    sessionsRoot,
+    relDir: '2026/03/18',
+    name: 'seed.jsonl',
+    cwd,
+    messages: [
+      userMessage('2026-03-18T13:00:00.000Z', 'seed question'),
+      assistantFinal('2026-03-18T13:00:01.000Z', 'seed answer')
+    ]
+  });
+
+  const first = ingestSessions({
+    cwd,
+    sessionsRoot,
+    maxFilesPerRun: 10,
+    maxKnownFileStats: 10
+  });
+  assert.equal(first.appended, 2);
+
+  const original = readJsonl(paths.log);
+  assert.equal(original.length, 2);
+
+  const duplicated = [
+    original[0],
+    original[1],
+    original[0],
+    original[1]
+  ];
+  writeFileSync(paths.log, duplicated.map((entry) => JSON.stringify(entry)).join('\n') + '\n');
+
+  const second = ingestSessions({
+    cwd,
+    sessionsRoot,
+    maxFilesPerRun: 10,
+    maxKnownFileStats: 10
+  });
+  assert.equal(second.appended, 0);
+
+  const compacted = readJsonl(paths.log);
+  assert.equal(compacted.length, 2);
+});
