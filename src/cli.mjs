@@ -9,7 +9,7 @@ import {
   editRemembered,
   forgetRemembered
 } from './lib/remember.mjs';
-import { handleHookEvent, hooksEnabled } from './lib/hooks.mjs';
+import { handleHookEvent, hooksEnabled, SUPPORTED_HOOK_EVENTS } from './lib/hooks.mjs';
 import { projectPaths } from './lib/paths.mjs';
 import { readJson, readJsonl, writeJsonAtomic } from './lib/fs-utils.mjs';
 import { buildRecentTurns } from './lib/turns.mjs';
@@ -28,7 +28,7 @@ function usage() {
   ${basename(process.argv[1])} remember list
   ${basename(process.argv[1])} remember edit <id> [--type ${REMEMBER_TYPES.join('|')}] [content]
   ${basename(process.argv[1])} remember forget <id>
-  ${basename(process.argv[1])} hook <SessionStart|UserPromptSubmit|Stop> [--text "..."]
+  ${basename(process.argv[1])} hook <event> [--text "..."]  # ${SUPPORTED_HOOK_EVENTS.join('|')}
   ${basename(process.argv[1])} codex-init [--global] [--with-agents] [--apply-notify] [--notify-config path] [--force] [--command name]
   ${basename(process.argv[1])} status`);
 }
@@ -242,6 +242,45 @@ function parseTextOption(args) {
   return { text: String(text || '').trim() };
 }
 
+async function readPipedStdinText() {
+  if (process.stdin.isTTY) return '';
+
+  return await new Promise((resolve, reject) => {
+    let buffer = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+      buffer += chunk;
+    });
+    process.stdin.on('end', () => {
+      resolve(buffer);
+    });
+    process.stdin.on('error', reject);
+  });
+}
+
+function parseHookInput(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    throw new Error(`hook stdin must be JSON object: ${error?.message || 'parse error'}`);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('hook stdin must be JSON object');
+  }
+
+  return parsed;
+}
+
+function hookEventFromInput(hookInput) {
+  if (!hookInput || typeof hookInput !== 'object') return '';
+  return String(hookInput.hook_event_name || hookInput.hookEventName || '').trim();
+}
+
 function parseCodexInitOptions(args) {
   const out = {
     global: false,
@@ -398,14 +437,24 @@ async function main() {
   }
 
   if (cmd === 'hook') {
-    const event = args[0];
-    if (!event) {
-      throw new Error('hook requires an event: SessionStart | UserPromptSubmit | Stop');
+    let event = '';
+    let hookArgs = args;
+    if (args[0] && !args[0].startsWith('--')) {
+      event = args[0];
+      hookArgs = args.slice(1);
     }
-    const { text } = parseTextOption(args.slice(1));
+    const hookInput = parseHookInput(await readPipedStdinText());
+    if (!event) {
+      event = hookEventFromInput(hookInput);
+    }
+    if (!event) {
+      throw new Error(`hook requires an event: ${SUPPORTED_HOOK_EVENTS.join(' | ')}`);
+    }
+    const { text } = parseTextOption(hookArgs);
     const result = handleHookEvent({
       event,
-      text
+      text,
+      hookInput
     });
     console.log(JSON.stringify(result, null, 2));
     return;

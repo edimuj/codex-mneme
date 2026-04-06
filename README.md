@@ -217,9 +217,44 @@ Enable them explicitly:
 ```bash
 export CODEX_MNEME_ENABLE_HOOKS=1
 codex-mneme hook SessionStart
+codex-mneme hook PreToolUse --text "About to run a shell command"
+codex-mneme hook PostToolUse --text "Shell command completed"
 codex-mneme hook UserPromptSubmit --text "Investigate ingest performance"
 codex-mneme hook Stop
 ```
+
+Or let Codex pipe hook payload JSON to stdin and infer the event automatically:
+
+```bash
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"s1","turn_id":"t1","prompt":"Investigate ingest performance"}' | codex-mneme hook
+```
+
+For `hooks.json`, that means you can use the same command for all events:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "codex-mneme hook" }] }],
+    "PreToolUse": [{ "hooks": [{ "type": "command", "command": "codex-mneme hook" }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "codex-mneme hook" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "codex-mneme hook" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "codex-mneme hook" }] }]
+  }
+}
+```
+
+Optional: override per-event hook policy (currently `ingest`) with `CODEX_MNEME_HOOK_POLICIES`:
+
+```bash
+export CODEX_MNEME_HOOK_POLICIES='{"PreToolUse":{"ingest":true},"Stop":{"ingest":false}}'
+```
+
+Hook records now include correlation keys when available from hook payloads:
+
+- `sessionId`
+- `turnId`
+- `turnKey` (`<sessionId>:<turnId>`)
+- `toolUseId` / `toolName` / `source` when present
 
 ## How it works
 
