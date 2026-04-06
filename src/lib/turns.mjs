@@ -36,6 +36,10 @@ function sortEntries(entries) {
     .map(({ entry }) => entry);
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export function buildRecentTurns(entries, { limit = 12 } = {}) {
   const turns = [];
   const sorted = sortEntries(entries);
@@ -71,6 +75,83 @@ export function buildRecentTurns(entries, { limit = 12 } = {}) {
       current.assistant.push(text);
     }
   }
+
+  if (turns.length <= limit) return turns;
+  return turns.slice(-limit);
+}
+
+export function buildRecentHookTurns(entries, { limit = 8 } = {}) {
+  const hooks = asArray(entries)
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => ({
+      timestamp: String(entry.timestamp || ''),
+      event: String(entry.event || '').trim(),
+      text: normalize(entry.text || ''),
+      turnKey: String(entry.turnKey || '').trim(),
+      sessionId: String(entry.sessionId || '').trim(),
+      turnId: String(entry.turnId || '').trim()
+    }))
+    .filter((entry) => entry.event);
+
+  if (hooks.length === 0) return [];
+
+  const grouped = new Map();
+
+  for (const entry of hooks) {
+    const key = entry.turnKey || (entry.sessionId && entry.turnId ? `${entry.sessionId}:${entry.turnId}` : '');
+    if (!key) continue;
+
+    let bucket = grouped.get(key);
+    if (!bucket) {
+      bucket = {
+        turnKey: key,
+        timestamp: entry.timestamp,
+        sortTs: toEpochMs(entry.timestamp),
+        events: [],
+        eventSet: new Set(),
+        prompt: '',
+        tools: [],
+        toolSet: new Set(),
+        outcome: ''
+      };
+      grouped.set(key, bucket);
+    }
+
+    const ts = toEpochMs(entry.timestamp);
+    if (ts >= bucket.sortTs) {
+      bucket.sortTs = ts;
+      bucket.timestamp = entry.timestamp;
+    }
+
+    if (entry.event && !bucket.eventSet.has(entry.event)) {
+      bucket.eventSet.add(entry.event);
+      bucket.events.push(entry.event);
+    }
+
+    if (entry.event === 'UserPromptSubmit' && entry.text && !bucket.prompt) {
+      bucket.prompt = entry.text;
+    }
+
+    if ((entry.event === 'PreToolUse' || entry.event === 'PostToolUse') && entry.text && !bucket.toolSet.has(entry.text)) {
+      bucket.toolSet.add(entry.text);
+      bucket.tools.push(entry.text);
+    }
+
+    if (entry.event === 'Stop' && entry.text) {
+      bucket.outcome = entry.text;
+    }
+  }
+
+  const turns = [...grouped.values()]
+    .sort((a, b) => a.sortTs - b.sortTs)
+    .map((bucket) => ({
+      timestamp: bucket.timestamp,
+      turnKey: bucket.turnKey,
+      events: bucket.events,
+      prompt: bucket.prompt,
+      tools: bucket.tools,
+      outcome: bucket.outcome
+    }));
 
   if (turns.length <= limit) return turns;
   return turns.slice(-limit);

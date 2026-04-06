@@ -28,6 +28,7 @@ Important decisions, constraints, and half-finished work end up buried across ol
 - Incremental, bounded ingest for large session histories
 - Optional AI summaries through your local Codex CLI auth
 - Optional hook integration, while keeping history ingest as the canonical path
+- Hook-aware startup context via correlated recent hook turns
 - Codex-native setup via `codex-init`
 
 ## Install
@@ -257,6 +258,8 @@ Hook records now include correlation keys when available from hook payloads:
 - `turnId`
 - `turnKey` (`<sessionId>:<turnId>`)
 - `toolUseId` / `toolName` / `source` when present
+
+`session-start` now includes a `Recent Hook Turns` section when correlated hook data is available.
 
 ## How it works
 

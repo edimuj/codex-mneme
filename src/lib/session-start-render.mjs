@@ -67,6 +67,7 @@ export function buildSessionStartOutput({
   rememberedNotice = '',
   rollingSummary = null,
   recentTurns = [],
+  recentHookTurns = [],
   maxRecentChars = 0,
   summaryNotice = ''
 } = {}) {
@@ -120,7 +121,29 @@ export function buildSessionStartOutput({
     }
   }
 
-  if ((recentTurns || []).length === 0 && (!Array.isArray(remembered) || remembered.length === 0)) {
+  if (Array.isArray(recentHookTurns) && recentHookTurns.length > 0) {
+    lines.push('', '## Recent Hook Turns');
+    for (const turn of recentHookTurns) {
+      const ts = String(turn.timestamp || '').replace('T', ' ').replace('Z', '');
+      const events = Array.isArray(turn.events) ? turn.events.join(' -> ') : '';
+      const key = String(turn.turnKey || '').trim();
+      const titleParts = [ts];
+      if (key) titleParts.push(key);
+      if (events) titleParts.push(`[${events}]`);
+      lines.push(`- ${titleParts.filter(Boolean).join(' ')}`);
+      if (turn.prompt) lines.push(`  prompt: ${summarizeText(turn.prompt, recentUserMax)}`);
+      if (Array.isArray(turn.tools) && turn.tools.length > 0) {
+        lines.push(`  tools: ${summarizeText(turn.tools.join(' | '), recentAssistantMax)}`);
+      }
+      if (turn.outcome) lines.push(`  outcome: ${summarizeText(turn.outcome, recentAssistantMax)}`);
+    }
+  }
+
+  if (
+    (recentTurns || []).length === 0
+    && (recentHookTurns || []).length === 0
+    && (!Array.isArray(remembered) || remembered.length === 0)
+  ) {
     lines.push('', 'No project memory yet. Run `codex-mneme ingest` after some sessions.');
   }
 

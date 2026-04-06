@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRecentTurns } from '../src/lib/turns.mjs';
+import { buildRecentHookTurns, buildRecentTurns } from '../src/lib/turns.mjs';
 
 test('buildRecentTurns orders by timestamp and groups user + assistant entries', () => {
   const turns = buildRecentTurns([
@@ -75,4 +75,40 @@ test('buildRecentTurns respects turn limit after grouping', () => {
   assert.equal(turns.length, 2);
   assert.equal(turns[0].user, 'q2');
   assert.equal(turns[1].user, 'q3');
+});
+
+test('buildRecentHookTurns groups events by turnKey and builds prompt/tool/outcome', () => {
+  const turns = buildRecentHookTurns([
+    {
+      timestamp: '2026-04-06T10:00:00.000Z',
+      event: 'UserPromptSubmit',
+      turnKey: 's1:t1',
+      text: 'fix the failing tests'
+    },
+    {
+      timestamp: '2026-04-06T10:00:01.000Z',
+      event: 'PreToolUse',
+      turnKey: 's1:t1',
+      text: 'npm test'
+    },
+    {
+      timestamp: '2026-04-06T10:00:02.000Z',
+      event: 'PostToolUse',
+      turnKey: 's1:t1',
+      text: 'npm test'
+    },
+    {
+      timestamp: '2026-04-06T10:00:03.000Z',
+      event: 'Stop',
+      turnKey: 's1:t1',
+      text: 'one test still failing'
+    }
+  ]);
+
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0].turnKey, 's1:t1');
+  assert.deepEqual(turns[0].events, ['UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop']);
+  assert.equal(turns[0].prompt, 'fix the failing tests');
+  assert.deepEqual(turns[0].tools, ['npm test']);
+  assert.equal(turns[0].outcome, 'one test still failing');
 });

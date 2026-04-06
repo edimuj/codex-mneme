@@ -100,6 +100,30 @@ test('buildSessionStartOutput renders remembered notice', () => {
   assert.match(out, /Showing 2 of 5 remembered items\./);
 });
 
+test('buildSessionStartOutput renders recent hook turns section', () => {
+  const out = buildSessionStartOutput({
+    remembered: [],
+    rollingSummary: null,
+    recentTurns: [],
+    recentHookTurns: [
+      {
+        timestamp: '2026-04-06T10:00:03.000Z',
+        turnKey: 's1:t1',
+        events: ['UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop'],
+        prompt: 'Fix failing tests',
+        tools: ['npm test'],
+        outcome: 'One test still failing'
+      }
+    ]
+  });
+
+  assert.match(out, /## Recent Hook Turns/);
+  assert.match(out, /s1:t1 \[UserPromptSubmit -> PreToolUse -> PostToolUse -> Stop\]/);
+  assert.match(out, /prompt: Fix failing tests/);
+  assert.match(out, /tools: npm test/);
+  assert.match(out, /outcome: One test still failing/);
+});
+
 test('selectRememberedItems limits output and prioritizes constraint\/todo by recency', () => {
   const selected = selectRememberedItems([
     { type: 'decision', content: 'older decision', timestamp: '2026-03-19T10:00:00.000Z' },

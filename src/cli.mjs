@@ -12,7 +12,7 @@ import {
 import { handleHookEvent, hooksEnabled, SUPPORTED_HOOK_EVENTS } from './lib/hooks.mjs';
 import { projectPaths } from './lib/paths.mjs';
 import { readJson, readJsonl, writeJsonAtomic } from './lib/fs-utils.mjs';
-import { buildRecentTurns } from './lib/turns.mjs';
+import { buildRecentHookTurns, buildRecentTurns } from './lib/turns.mjs';
 import { buildRollingSummary } from './lib/summary.mjs';
 import { buildAiRollingSummary } from './lib/ai-summary.mjs';
 import { buildSessionStartOutput, clipOutput, selectRememberedItems } from './lib/session-start-render.mjs';
@@ -526,12 +526,15 @@ async function main() {
     }
 
     const recentTurns = buildRecentTurns(log, { limit: options.limit });
+    const hooksLog = readJsonl(paths.hooks);
+    const recentHookTurns = buildRecentHookTurns(hooksLog, { limit: options.limit });
 
     const output = buildSessionStartOutput({
       remembered,
       rememberedNotice,
       rollingSummary,
       recentTurns,
+      recentHookTurns,
       maxRecentChars: options.maxRecentChars,
       summaryNotice
     });
