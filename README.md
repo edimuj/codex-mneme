@@ -260,6 +260,7 @@ Hook records now include correlation keys when available from hook payloads:
 - `toolUseId` / `toolName` / `source` when present
 
 `session-start` now includes a `Recent Hook Turns` section when correlated hook data is available.
+Rolling summaries (deterministic and AI) also consume older hook turns when hook logs are present.
 
 ## How it works
 

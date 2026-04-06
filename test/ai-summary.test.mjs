@@ -140,3 +140,53 @@ test('buildAiRollingSummary throws when codex execution fails', () => {
     });
   }, /login required/);
 });
+
+test('buildAiRollingSummary includes hook turns in summarization prompt context', () => {
+  let capturedPrompt = '';
+  const summary = buildAiRollingSummary([
+    { timestamp: '2026-03-18T10:00:00.000Z', role: 'user', text: 'q1' },
+    { timestamp: '2026-03-18T10:00:01.000Z', role: 'assistant', text: 'a1' },
+    { timestamp: '2026-03-18T10:00:02.000Z', role: 'user', text: 'q2' },
+    { timestamp: '2026-03-18T10:00:03.000Z', role: 'assistant', text: 'a2' }
+  ], {
+    recentTurnLimit: 1,
+    maxItems: 3,
+    hookEntries: [
+      {
+        timestamp: '2026-03-18T10:00:00.500Z',
+        event: 'UserPromptSubmit',
+        turnKey: 's1:t1',
+        text: 'Fix tests'
+      },
+      {
+        timestamp: '2026-03-18T10:00:01.500Z',
+        event: 'PreToolUse',
+        turnKey: 's1:t1',
+        text: 'npm test'
+      },
+      {
+        timestamp: '2026-03-18T10:00:02.500Z',
+        event: 'Stop',
+        turnKey: 's1:t1',
+        text: 'one test failed'
+      },
+      {
+        timestamp: '2026-03-18T10:00:03.500Z',
+        event: 'UserPromptSubmit',
+        turnKey: 's1:t2',
+        text: 'Second prompt'
+      }
+    ]
+  }, {
+    runExec: (params) => {
+      capturedPrompt = params.prompt;
+      return { ok: true, output: '{"items":["decision: capture hooks"]}' };
+    }
+  });
+
+  assert.ok(summary);
+  assert.equal(summary.totalHookTurns, 2);
+  assert.equal(summary.summarizedHookTurns, 1);
+  assert.match(capturedPrompt, /Older conversation and hook turns to summarize:/);
+  assert.match(capturedPrompt, /hook s1:t1/);
+});

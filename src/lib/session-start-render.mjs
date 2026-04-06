@@ -101,7 +101,13 @@ export function buildSessionStartOutput({
       } else {
         lines.push('- Source: deterministic heuristic.');
       }
-      lines.push(`- Covers ${rollingSummary.summarizedTurns} older turns (latest ${rollingSummary.recentTurns} shown below).`);
+      const olderHookTurns = Number.isFinite(rollingSummary.summarizedHookTurns)
+        ? rollingSummary.summarizedHookTurns
+        : 0;
+      const coverageTail = olderHookTurns > 0
+        ? ` + ${olderHookTurns} older hook turns`
+        : '';
+      lines.push(`- Covers ${rollingSummary.summarizedTurns} older turns${coverageTail} (latest ${rollingSummary.recentTurns} shown below).`);
       for (const item of rollingSummary.items || []) {
         lines.push(`- ${item}`);
       }

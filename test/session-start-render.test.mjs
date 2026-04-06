@@ -53,6 +53,22 @@ test('buildSessionStartOutput renders summary source and fallback notice', () =>
   assert.match(out, /decision: keep jsonl canonical/);
 });
 
+test('buildSessionStartOutput includes hook coverage in rolling summary line', () => {
+  const out = buildSessionStartOutput({
+    remembered: [],
+    rollingSummary: {
+      source: 'deterministic',
+      summarizedTurns: 5,
+      summarizedHookTurns: 2,
+      recentTurns: 2,
+      items: ['decision: keep jsonl canonical']
+    },
+    recentTurns: []
+  });
+
+  assert.match(out, /Covers 5 older turns \+ 2 older hook turns/);
+});
+
 test('buildSessionStartOutput renders ai summary model metadata', () => {
   const out = buildSessionStartOutput({
     remembered: [],

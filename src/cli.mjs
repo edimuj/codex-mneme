@@ -479,6 +479,7 @@ async function main() {
     const options = parseSessionStartOptions(args);
     ingestSessions();
     const paths = projectPaths(process.cwd());
+    const hooksLog = readJsonl(paths.hooks);
     const rememberedAll = readJson(paths.remembered, []);
     const rememberedSelection = selectRememberedItems(rememberedAll, {
       maxItems: options.maxRememberedItems
@@ -496,10 +497,11 @@ async function main() {
     if (options.summaryMode !== 'off') {
       if (options.summaryMode === 'ai') {
         try {
-          rollingSummary = buildAiRollingSummary(log, {
-            recentTurnLimit: options.limit,
-            maxItems: options.maxSummaryItems,
-            model: options.summaryModel,
+        rollingSummary = buildAiRollingSummary(log, {
+          recentTurnLimit: options.limit,
+          maxItems: options.maxSummaryItems,
+          hookEntries: hooksLog,
+          model: options.summaryModel,
             maxInputChars: options.summaryInputChars,
             timeoutMs: options.summaryTimeoutMs,
             itemMaxChars: options.summaryItemChars
@@ -520,13 +522,13 @@ async function main() {
       if (!rollingSummary) {
         rollingSummary = buildRollingSummary(log, {
           recentTurnLimit: options.limit,
-          maxItems: options.maxSummaryItems
+          maxItems: options.maxSummaryItems,
+          hookEntries: hooksLog
         });
       }
     }
 
     const recentTurns = buildRecentTurns(log, { limit: options.limit });
-    const hooksLog = readJsonl(paths.hooks);
     const recentHookTurns = buildRecentHookTurns(hooksLog, { limit: options.limit });
 
     const output = buildSessionStartOutput({

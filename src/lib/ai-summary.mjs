@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildRecentTurns } from './turns.mjs';
+import { buildRecentHookTurns, buildRecentTurns } from './turns.mjs';
 
 const AI_SUMMARY_SCHEMA_VERSION = 1;
 
@@ -37,6 +37,12 @@ function formatDate(timestamp) {
   return timestamp.slice(0, 10);
 }
 
+function toEpochMs(timestamp) {
+  const ms = Date.parse(timestamp);
+  if (Number.isNaN(ms)) return Number.MAX_SAFE_INTEGER;
+  return ms;
+}
+
 function renderTurn(turn, { maxUserChars, maxAssistantChars }) {
   const date = formatDate(turn.timestamp);
   const prefix = date ? `[${date}] ` : '';
@@ -46,6 +52,24 @@ function renderTurn(turn, { maxUserChars, maxAssistantChars }) {
   if (user) return `${prefix}user: ${user}`;
   if (assistant) return `${prefix}assistant: ${assistant}`;
   return '';
+}
+
+function renderHookTurn(turn, { maxUserChars, maxAssistantChars }) {
+  const date = formatDate(turn.timestamp);
+  const prefix = date ? `[${date}] ` : '';
+  const events = Array.isArray(turn.events) ? turn.events.join(' -> ') : '';
+  const parts = [];
+  if (turn.prompt) parts.push(`prompt: ${clipText(turn.prompt, maxUserChars)}`);
+  if (Array.isArray(turn.tools) && turn.tools.length > 0) {
+    parts.push(`tools: ${clipText(turn.tools.join(' | '), maxAssistantChars)}`);
+  }
+  if (turn.outcome) parts.push(`outcome: ${clipText(turn.outcome, maxAssistantChars)}`);
+
+  const head = [prefix, 'hook', turn.turnKey || '', events ? `[${events}]` : '']
+    .filter(Boolean)
+    .join(' ');
+  if (parts.length === 0) return head;
+  return `${head} | ${parts.join(' | ')}`;
 }
 
 function sanitizeItem(text, maxChars) {
@@ -192,6 +216,7 @@ function normalizeCachedItems(value, { maxItems, itemMaxChars }) {
 export function buildAiRollingSummary(entries, {
   recentTurnLimit = 12,
   maxItems = 6,
+  hookEntries = [],
   model = 'gpt-5.4-mini',
   maxInputChars = 12000,
   itemMaxChars = 220,
@@ -203,26 +228,57 @@ export function buildAiRollingSummary(entries, {
   if (!Number.isFinite(maxItems) || maxItems <= 0) return null;
 
   const turns = buildRecentTurns(entries, { limit: Number.MAX_SAFE_INTEGER });
-  if (turns.length <= recentTurnLimit) return null;
-
+  const hookTurns = buildRecentHookTurns(hookEntries, { limit: Number.MAX_SAFE_INTEGER });
   const olderTurns = turns.slice(0, turns.length - recentTurnLimit);
-  if (olderTurns.length === 0) return null;
+  const olderHookTurns = hookTurns.slice(0, hookTurns.length - recentTurnLimit);
+  const candidates = [
+    ...olderTurns.map((turn) => ({
+      kind: 'chat',
+      timestamp: turn.timestamp,
+      text: renderTurn(turn, { maxUserChars, maxAssistantChars })
+    })),
+    ...olderHookTurns.map((turn) => ({
+      kind: 'hook',
+      timestamp: turn.timestamp,
+      text: renderHookTurn(turn, { maxUserChars, maxAssistantChars })
+    }))
+  ]
+    .filter((item) => Boolean(item.text))
+    .sort((a, b) => toEpochMs(a.timestamp) - toEpochMs(b.timestamp));
+  if (candidates.length === 0) return null;
 
   const inputBudget = Number.isFinite(maxInputChars) && maxInputChars > 0 ? maxInputChars : 12000;
   const perTurnEstimate = Math.max(120, Math.min(maxUserChars + maxAssistantChars + 24, 500));
-  let sampleCount = Math.max(1, Math.min(olderTurns.length, Math.floor(inputBudget / perTurnEstimate)));
-  let sampled = pickIndices(olderTurns.length, sampleCount).map((idx) => olderTurns[idx]);
+  let sampleCount = Math.max(1, Math.min(candidates.length, Math.floor(inputBudget / perTurnEstimate)));
+  let sampled = pickIndices(candidates.length, sampleCount).map((idx) => candidates[idx]);
+  if (!sampled.some((item) => item?.kind === 'hook') && olderHookTurns.length > 0 && (olderTurns.length === 0 || sampleCount > 1)) {
+    const fallbackHook = [...candidates].reverse().find((item) => item.kind === 'hook');
+    if (fallbackHook) {
+      sampled = sampled.filter(Boolean);
+      if (sampled.length === 0) {
+        sampled.push(fallbackHook);
+      } else {
+        sampled[sampled.length - 1] = fallbackHook;
+      }
+    }
+  }
   let rendered = sampled
-    .map((turn) => renderTurn(turn, { maxUserChars, maxAssistantChars }))
-    .filter(Boolean)
+    .map((item) => item.text)
     .join('\n');
 
   while (rendered.length > inputBudget && sampleCount > 1) {
     sampleCount = Math.max(1, Math.floor(sampleCount * 0.8));
-    sampled = pickIndices(olderTurns.length, sampleCount).map((idx) => olderTurns[idx]);
+    sampled = pickIndices(candidates.length, sampleCount).map((idx) => candidates[idx]);
+    if (!sampled.some((item) => item?.kind === 'hook') && olderHookTurns.length > 0 && (olderTurns.length === 0 || sampleCount > 1)) {
+      const fallbackHook = [...candidates].reverse().find((item) => item.kind === 'hook');
+      if (fallbackHook) {
+        sampled = sampled.filter(Boolean);
+        if (sampled.length === 0) sampled.push(fallbackHook);
+        else sampled[sampled.length - 1] = fallbackHook;
+      }
+    }
     rendered = sampled
-      .map((turn) => renderTurn(turn, { maxUserChars, maxAssistantChars }))
-      .filter(Boolean)
+      .map((item) => item.text)
       .join('\n');
   }
 
@@ -239,7 +295,7 @@ export function buildAiRollingSummary(entries, {
     'Focus on: decisions, constraints, todos/next steps, unresolved bugs, and implementation facts.',
     'Ignore social chatter and acknowledgements.',
     '',
-    'Older turns to summarize:',
+    'Older conversation and hook turns to summarize:',
     rendered
   ].join('\n');
 
@@ -249,7 +305,9 @@ export function buildAiRollingSummary(entries, {
     model,
     sampledTurns: sampled.length,
     totalTurns: turns.length,
+    totalHookTurns: hookTurns.length,
     summarizedTurns: olderTurns.length,
+    summarizedHookTurns: olderHookTurns.length,
     recentTurns: recentTurnLimit
   };
 
