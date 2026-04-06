@@ -9,9 +9,11 @@ const AGENTS_REL_PATH = 'AGENTS.md';
 const AGENTS_BLOCK_START = '<!-- codex-mneme:begin -->';
 const AGENTS_BLOCK_END = '<!-- codex-mneme:end -->';
 const CONFIG_REL_PATH = 'config.toml';
+const HOOKS_REL_PATH = 'hooks.json';
 const CONFIG_BLOCK_START = '# codex-mneme:begin';
 const CONFIG_BLOCK_END = '# codex-mneme:end';
 const NOTIFY_KEY_PATTERN = /^\s*notify\s*=/m;
+const HOOK_EVENTS = ['SessionStart', 'PreToolUse', 'PostToolUse', 'UserPromptSubmit', 'Stop'];
 
 function normalizeNewlines(text) {
   return String(text || '').replace(/\r\n/g, '\n');
@@ -66,6 +68,89 @@ ${codexNotifyBody({ command })}
 ${CONFIG_BLOCK_END}`;
 }
 
+function codexHookCommand({ command = 'codex-mneme' } = {}) {
+  return `bash -lc "CODEX_MNEME_ENABLE_HOOKS=1 ${command} hook"`;
+}
+
+export function codexHooksSnippet({ command = 'codex-mneme' } = {}) {
+  const hookCommand = codexHookCommand({ command });
+  const hooks = {};
+  for (const event of HOOK_EVENTS) {
+    hooks[event] = [
+      {
+        hooks: [
+          {
+            type: 'command',
+            command: hookCommand,
+            timeout: 10
+          }
+        ]
+      }
+    ];
+  }
+  return JSON.stringify({ hooks }, null, 2);
+}
+
+function hooksConfigError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function upsertHooksConfig(existingText, { command = 'codex-mneme' } = {}) {
+  const source = normalizeNewlines(existingText).trim();
+  let parsed = {};
+  if (source) {
+    try {
+      parsed = JSON.parse(source);
+    } catch (error) {
+      throw hooksConfigError('invalid_hooks_json', `invalid hooks.json: ${error?.message || 'parse error'}`);
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw hooksConfigError('invalid_hooks_shape', 'invalid hooks.json: expected top-level object');
+  }
+
+  if (!Object.hasOwn(parsed, 'hooks')) {
+    parsed.hooks = {};
+  }
+  if (!parsed.hooks || typeof parsed.hooks !== 'object' || Array.isArray(parsed.hooks)) {
+    throw hooksConfigError('invalid_hooks_shape', 'invalid hooks.json: hooks must be object');
+  }
+
+  const hookCommand = codexHookCommand({ command });
+  for (const event of HOOK_EVENTS) {
+    if (!Object.hasOwn(parsed.hooks, event)) {
+      parsed.hooks[event] = [];
+    }
+
+    const groups = parsed.hooks[event];
+    if (!Array.isArray(groups)) {
+      throw hooksConfigError('invalid_hooks_shape', `invalid hooks.json: ${event} must be array`);
+    }
+
+    const exists = groups.some((group) =>
+      Array.isArray(group?.hooks)
+      && group.hooks.some((hook) => hook?.type === 'command' && hook?.command === hookCommand)
+    );
+
+    if (!exists) {
+      groups.push({
+        hooks: [
+          {
+            type: 'command',
+            command: hookCommand,
+            timeout: 10
+          }
+        ]
+      });
+    }
+  }
+
+  return `${JSON.stringify(parsed, null, 2)}\n`;
+}
+
 function upsertManagedBlock(existingText, {
   startMarker,
   endMarker,
@@ -115,6 +200,8 @@ export function setupCodexCli({
   withAgents = false,
   applyNotify = false,
   notifyConfigPath = '',
+  applyHooks = false,
+  hooksConfigPath = '',
   global = false,
   codexHomePath = '',
   command = 'codex-mneme'
@@ -177,6 +264,24 @@ export function setupCodexCli({
     }
   }
 
+  const hooksPath = hooksConfigPath
+    ? resolve(root, hooksConfigPath)
+    : resolve(codexRoot, HOOKS_REL_PATH);
+  let hooks = { status: 'skipped', path: hooksPath };
+  if (applyHooks) {
+    const existing = existsSync(hooksPath) ? readFileSync(hooksPath, 'utf8') : '';
+    try {
+      const next = upsertHooksConfig(existing, { command });
+      hooks = writeIfChanged(hooksPath, next);
+    } catch (error) {
+      hooks = {
+        status: 'conflict',
+        path: hooksPath,
+        reason: error?.code || 'invalid_hooks_json'
+      };
+    }
+  }
+
   return {
     scope,
     root,
@@ -185,7 +290,9 @@ export function setupCodexCli({
     skill,
     agents,
     config,
-    notifySnippet: codexNotifySnippet({ command })
+    hooks,
+    notifySnippet: codexNotifySnippet({ command }),
+    hooksSnippet: codexHooksSnippet({ command })
   };
 }
 
@@ -239,6 +346,7 @@ export function autoSetupCodexCli({
       global: true,
       withAgents: true,
       applyNotify: true,
+      applyHooks: true,
       codexHomePath,
       command
     })

@@ -19,6 +19,7 @@ test('setupCodexCli creates project skill and returns notify snippet', () => {
 
   assert.equal(result.skill.status, 'created');
   assert.equal(result.agents.status, 'skipped');
+  assert.equal(result.hooks.status, 'skipped');
   assert.ok(result.notifySnippet.includes('notify = ["bash", "-lc", "codex-mneme ingest >/dev/null 2>&1 || true"]'));
   assert.equal(existsSync(result.skill.path), true);
 
@@ -26,6 +27,7 @@ test('setupCodexCli creates project skill and returns notify snippet', () => {
   assert.ok(skillText.includes('session-start --limit 8'));
   assert.ok(skillText.includes('Do not ask the user to run mneme commands manually'));
   assert.ok(skillText.includes('remember --type decision|constraint|todo'));
+  assert.ok(result.hooksSnippet.includes('CODEX_MNEME_ENABLE_HOOKS=1 codex-mneme hook'));
 });
 
 test('setupCodexCli does not overwrite existing skill unless forced', () => {
@@ -170,6 +172,100 @@ test('setupCodexCli global mode applies notify to codex home config by default',
   assert.ok(configText.includes('notify = ["bash", "-lc", "codex-mneme ingest >/dev/null 2>&1 || true"]'));
 });
 
+test('setupCodexCli can create managed hooks.json entries', () => {
+  const cwd = tempProjectDir('hooks-create');
+  const result = setupCodexCli({
+    cwd,
+    applyHooks: true,
+    hooksConfigPath: '.codex/hooks.json'
+  });
+
+  assert.equal(result.hooks.status, 'created');
+  assert.ok(result.hooks.path.endsWith('/.codex/hooks.json'));
+  const text = readFileSync(result.hooks.path, 'utf8');
+  const parsed = JSON.parse(text);
+  assert.ok(parsed.hooks.SessionStart);
+  assert.ok(parsed.hooks.PreToolUse);
+  assert.ok(parsed.hooks.PostToolUse);
+  assert.ok(parsed.hooks.UserPromptSubmit);
+  assert.ok(parsed.hooks.Stop);
+  assert.equal(
+    parsed.hooks.Stop[0].hooks[0].command,
+    'bash -lc "CODEX_MNEME_ENABLE_HOOKS=1 codex-mneme hook"'
+  );
+});
+
+test('setupCodexCli appends managed hook command without replacing existing hooks', () => {
+  const cwd = tempProjectDir('hooks-append');
+  const hooksPath = join(cwd, '.codex', 'hooks.json');
+  mkdirSync(join(cwd, '.codex'), { recursive: true });
+  writeFileSync(hooksPath, JSON.stringify({
+    hooks: {
+      SessionStart: [
+        {
+          hooks: [
+            {
+              type: 'command',
+              command: 'echo existing'
+            }
+          ]
+        }
+      ]
+    }
+  }, null, 2), 'utf8');
+
+  const first = setupCodexCli({
+    cwd,
+    applyHooks: true,
+    hooksConfigPath: hooksPath
+  });
+  assert.equal(first.hooks.status, 'updated');
+
+  const parsed = JSON.parse(readFileSync(hooksPath, 'utf8'));
+  assert.equal(parsed.hooks.SessionStart.length, 2);
+  assert.equal(parsed.hooks.SessionStart[0].hooks[0].command, 'echo existing');
+
+  const second = setupCodexCli({
+    cwd,
+    applyHooks: true,
+    hooksConfigPath: hooksPath
+  });
+  assert.equal(second.hooks.status, 'unchanged');
+});
+
+test('setupCodexCli reports conflict for invalid hooks.json', () => {
+  const cwd = tempProjectDir('hooks-conflict');
+  const hooksPath = join(cwd, '.codex', 'hooks.json');
+  mkdirSync(join(cwd, '.codex'), { recursive: true });
+  writeFileSync(hooksPath, '{not json}', 'utf8');
+
+  const result = setupCodexCli({
+    cwd,
+    applyHooks: true,
+    hooksConfigPath: hooksPath
+  });
+
+  assert.equal(result.hooks.status, 'conflict');
+  assert.equal(result.hooks.reason, 'invalid_hooks_json');
+});
+
+test('setupCodexCli global mode applies hooks to codex home by default path', () => {
+  const cwd = tempProjectDir('global-hooks');
+  const codexRoot = join(cwd, 'fake-codex-home');
+
+  const result = setupCodexCli({
+    cwd,
+    global: true,
+    applyHooks: true,
+    codexHomePath: codexRoot
+  });
+
+  assert.equal(result.hooks.path, join(codexRoot, 'hooks.json'));
+  assert.equal(result.hooks.status, 'created');
+  const parsed = JSON.parse(readFileSync(result.hooks.path, 'utf8'));
+  assert.ok(parsed.hooks.Stop);
+});
+
 test('shouldAutoSetupCodexCli only enables for global install by default', () => {
   const cwd = tempProjectDir('auto-check');
 
@@ -229,7 +325,9 @@ test('autoSetupCodexCli applies global setup during global install', () => {
   assert.equal(result.setup.skill.status, 'created');
   assert.equal(result.setup.agents.status, 'created');
   assert.equal(result.setup.config.status, 'created');
+  assert.equal(result.setup.hooks.status, 'created');
   assert.equal(existsSync(join(codexRoot, 'skills', 'codex-mneme', 'SKILL.md')), true);
   assert.equal(existsSync(join(codexRoot, 'AGENTS.md')), true);
   assert.equal(existsSync(join(codexRoot, 'config.toml')), true);
+  assert.equal(existsSync(join(codexRoot, 'hooks.json')), true);
 });

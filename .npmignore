@@ -3,3 +3,5 @@ test/
 .idea/
 AGENTS.md
 *.tgz
+.dev/
+share/

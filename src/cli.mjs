@@ -29,7 +29,7 @@ function usage() {
   ${basename(process.argv[1])} remember edit <id> [--type ${REMEMBER_TYPES.join('|')}] [content]
   ${basename(process.argv[1])} remember forget <id>
   ${basename(process.argv[1])} hook <event> [--text "..."]  # ${SUPPORTED_HOOK_EVENTS.join('|')}
-  ${basename(process.argv[1])} codex-init [--global] [--with-agents] [--apply-notify] [--notify-config path] [--force] [--command name]
+  ${basename(process.argv[1])} codex-init [--global] [--with-agents] [--apply-notify] [--notify-config path] [--apply-hooks] [--hooks-config path] [--force] [--command name]
   ${basename(process.argv[1])} status`);
 }
 
@@ -287,6 +287,8 @@ function parseCodexInitOptions(args) {
     withAgents: false,
     applyNotify: false,
     notifyConfigPath: '',
+    applyHooks: false,
+    hooksConfigPath: '',
     force: false,
     command: 'codex-mneme'
   };
@@ -305,12 +307,25 @@ function parseCodexInitOptions(args) {
       out.applyNotify = true;
       continue;
     }
+    if (arg === '--apply-hooks') {
+      out.applyHooks = true;
+      continue;
+    }
     if (arg === '--notify-config') {
       const value = args[i + 1];
       if (!value || value.startsWith('--')) {
         throw new Error('--notify-config requires a value');
       }
       out.notifyConfigPath = value;
+      i += 1;
+      continue;
+    }
+    if (arg === '--hooks-config') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) {
+        throw new Error('--hooks-config requires a value');
+      }
+      out.hooksConfigPath = value;
       i += 1;
       continue;
     }

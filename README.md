@@ -43,6 +43,7 @@ On global install, `codex-mneme` now attempts to auto-configure Codex for you by
 - installing the global `codex-mneme` skill in `~/.codex/skills/`
 - inserting a managed global `~/.codex/AGENTS.md` workflow block
 - inserting a managed `notify` block in `~/.codex/config.toml` when there is no conflicting unmanaged `notify` setting
+- inserting/updating managed hook handlers in `~/.codex/hooks.json`
 
 If you want to disable install-time setup, use:
 
@@ -71,7 +72,7 @@ npm link
 2. Global install should auto-configure Codex. If you want to apply or re-apply it manually:
 
 ```bash
-codex-mneme codex-init --global --with-agents --apply-notify
+codex-mneme codex-init --global --with-agents --apply-notify --apply-hooks
 ```
 
 3. Generate startup context for the current project:
@@ -173,7 +174,7 @@ Most useful `session-start` flags:
 Global install should handle this automatically. If you want to run it manually or re-apply it:
 
 ```bash
-codex-mneme codex-init --global --with-agents --apply-notify
+codex-mneme codex-init --global --with-agents --apply-notify --apply-hooks
 ```
 
 That setup:
@@ -181,11 +182,12 @@ That setup:
 - creates `~/.codex/skills/codex-mneme/SKILL.md`
 - inserts or updates a managed `~/.codex/AGENTS.md` block
 - inserts or updates a managed `notify` block in `~/.codex/config.toml`
+- inserts or updates managed hook handlers in `~/.codex/hooks.json`
 
 For a project-local setup instead:
 
 ```bash
-codex-mneme codex-init --with-agents --apply-notify
+codex-mneme codex-init --with-agents --apply-notify --apply-hooks
 ```
 
 ## AI summaries
