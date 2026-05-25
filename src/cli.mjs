@@ -477,7 +477,13 @@ async function main() {
 
   if (cmd === 'session-start') {
     const options = parseSessionStartOptions(args);
-    ingestSessions();
+    let refreshNotice = '';
+    try {
+      ingestSessions();
+    } catch (error) {
+      const reason = summarizeText(error?.message || 'unknown error', 180);
+      refreshNotice = `Memory refresh skipped (${reason}); using cached project memory.`;
+    }
     const paths = projectPaths(process.cwd());
     const hooksLog = readJsonl(paths.hooks);
     const rememberedAll = readJson(paths.remembered, []);
@@ -530,6 +536,7 @@ async function main() {
 
     const recentTurns = buildRecentTurns(log, { limit: options.limit });
     const recentHookTurns = buildRecentHookTurns(hooksLog, { limit: options.limit });
+    const notices = [refreshNotice, summaryNotice].filter(Boolean);
 
     const output = buildSessionStartOutput({
       remembered,
@@ -538,7 +545,7 @@ async function main() {
       recentTurns,
       recentHookTurns,
       maxRecentChars: options.maxRecentChars,
-      summaryNotice
+      summaryNotice: notices.join(' ')
     });
     console.log(clipOutput(output, options.maxOutputChars));
     return;

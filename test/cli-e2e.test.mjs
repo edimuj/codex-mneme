@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -73,4 +73,31 @@ test('cli codex-init can apply hooks config', () => {
     parsed.hooks.Stop[0].hooks[0].command,
     'bash -lc "CODEX_MNEME_ENABLE_HOOKS=1 codex-mneme hook"'
   );
+});
+
+test('cli session-start prints cached context when memory refresh cannot write', () => {
+  const cwd = tempDir('readonly-cwd');
+  const mnemeHome = tempDir('readonly-home');
+  const projectBase = join(mnemeHome, 'projects', projectKey(cwd));
+  mkdirSync(projectBase, { recursive: true });
+  chmodSync(projectBase, 0o555);
+
+  try {
+    const result = spawnSync(process.execPath, [CLI_PATH, 'session-start', '--limit', '1'], {
+      cwd,
+      env: {
+        ...process.env,
+        CODEX_HOME: join(mnemeHome, 'codex-home'),
+        CODEX_MNEME_HOME: mnemeHome
+      },
+      encoding: 'utf8'
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /# Codex-Mneme Context/);
+    assert.match(result.stdout, /Memory refresh skipped/);
+    assert.match(result.stdout, /using cached project memory/);
+  } finally {
+    chmodSync(projectBase, 0o755);
+  }
 });
